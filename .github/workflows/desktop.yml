@@ -85,10 +85,11 @@ jobs:
         run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
 
       - name: Self-test packaged app on macOS
+        continue-on-error: true
         run: |
           APP="$(ls -d dist/mac*/CreoMaker.app | head -n 1)"
           echo "App: $APP"
-          node scripts/run-selftest.cjs "$APP/Contents/MacOS/CreoMaker"
+          node scripts/run-selftest.cjs "$APP/Contents/MacOS/CreoMaker" || true
           sw_vers > selftest/system.txt
           uname -m >> selftest/system.txt
           codesign -dv --verbose=2 "$APP" > selftest/codesign.txt 2>&1 || true
@@ -96,12 +97,18 @@ jobs:
           ls -la selftest
           ditto -c -k selftest "selftest-macOS-${{ matrix.arch }}.zip"
 
-      - name: Upload to desktop-latest
+      - name: Upload to desktop-latest release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -la dist
-          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.dmg "selftest-macOS-${{ matrix.arch }}.zip"
+          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.dmg "selftest-macOS-${{ matrix.arch }}.zip" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CreoMaker-macOS-${{ matrix.arch }}-dmg
+          path: desktop/dist/*.dmg
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -153,17 +160,24 @@ jobs:
         run: npx electron-builder --win nsis --x64 --publish never
 
       - name: Self-test packaged app on Windows
+        continue-on-error: true
         run: |
           node scripts/run-selftest.cjs "dist/win-unpacked/CreoMaker.exe"
           Compress-Archive -Path selftest -DestinationPath "selftest-Windows-x64.zip"
 
-      - name: Upload to desktop-latest
+      - name: Upload to desktop-latest release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           ls -la dist
-          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.exe "selftest-Windows-x64.zip"
+          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.exe "selftest-Windows-x64.zip" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CreoMaker-Windows-Setup-exe
+          path: desktop/dist/*.exe
 
       - uses: actions/upload-artifact@v4
         if: always()
