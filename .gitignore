@@ -1,0 +1,21 @@
+# Local user data, jobs, uploads, previews
+data/
+
+# Platform binaries & bundled media (distributed in platform archives)
+tools/
+runtime/
+assets/
+
+# Distribution archives & temporary build/test outputs
+*.zip
+*.tmp
+.build/
+test-results/
+node_modules/
+
+# Local update tracking metadata
+.update-meta.json
+
+# OS files
+.DS_Store
+Thumbs.db
