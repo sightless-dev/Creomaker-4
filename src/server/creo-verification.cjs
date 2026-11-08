@@ -192,7 +192,7 @@ async function inspect(engine, file, signal) {
   };
 }
 
-function compare(source, output, { requireSignals = true, metadataEnabled = true, mainDuration, tailSeconds = 0 } = {}) {
+function compare(source, output, { requireSignals = true, requireAudio = requireSignals, metadataEnabled = true, mainDuration, tailSeconds = 0 } = {}) {
   const checks = [];
   const add = (id, label, state, message) => checks.push({ id, label, state, message });
   add('sha256', 'SHA-256 файла', source.sha256 !== output.sha256 ? 'changed' : 'same', source.sha256 !== output.sha256 ? 'Разные байты файла' : 'Файлы побайтно совпадают');
@@ -212,8 +212,8 @@ function compare(source, output, { requireSignals = true, metadataEnabled = true
   const knownFps = Number.isFinite(source.fps) && source.fps > 0 && Number.isFinite(output.fps) && output.fps > 0;
   add('fps', 'Частота кадров', !requireSignals ? 'na' : !knownFps ? 'unavailable' : Math.abs(source.fps - output.fps) > .05 ? 'changed' : 'same', knownFps ? round(source.fps) + ' → ' + round(output.fps) + ' кадр/с' : 'Недостаточно данных о частоте кадров');
   const a = source.audio, b = output.audio;
-  if (!requireSignals || !a?.audible && !b?.audible) {
-    for (const [id, label] of [['audio', 'Аудиоотпечаток'], ['spectrum', 'Спектр звука'], ['amplitude', 'Амплитуда звука']]) add(id, label, 'na', !requireSignals ? 'Преобразование не запрошено' : 'Нет слышимого звука для сравнения');
+  if (!requireAudio || !a?.audible && !b?.audible) {
+    for (const [id, label] of [['audio', 'Аудиоотпечаток'], ['spectrum', 'Спектр звука'], ['amplitude', 'Амплитуда звука']]) add(id, label, 'na', !requireAudio ? 'Преобразование не запрошено' : 'Нет слышимого звука для сравнения');
   } else if (!a?.audible || !b?.audible) {
     add('audio', 'Аудиоотпечаток', b?.audible ? 'changed' : 'unavailable', b?.audible ? 'Добавлен слышимый звук' : 'Звук исходника отсутствует в результате');
     add('spectrum', 'Спектр звука', 'na', 'Только одна сторона содержит слышимый звук');

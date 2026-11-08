@@ -52,7 +52,7 @@
  const durationOf=m=>m?.probe?.duration;
  function edit(){if(!current?.probe)return null;return workspace.edits[current.id] ||= {start:0,end:current.probe.duration,strength:18,zones:[],time:0};}
  const hasEdit=id=>{const e=workspace.edits[id],m=refs.get(id);if(!e)return false;return e.zones?.length>0||e.start>0||(durationOf(m)&&e.end<durationOf(m)-.01);};
- function plan(){return P.planBatch({settings:workspace.settings,inputs:selectedMedia().map(m=>({id:m.id,name:m.name,image:isImage(m),duration:durationOf(m)})),edits:workspace.edits,tails:workspace.tails});}
+ function plan(){return P.planBatch({settings:workspace.settings,inputs:selectedMedia().map(m=>({id:m.id,name:m.name,image:isImage(m),duration:durationOf(m)})),edits:workspace.edits,tails:workspace.tails,music:workspace.music});}
  const matchedPreset=()=>P.matchUserPreset(workspace.settings,workspace.userPresets);
 
  /* ---------- Settings column ---------- */
@@ -265,7 +265,8 @@
   else{Object.assign(g.style,{left:'0',top:'0',width:'100%',height:'100%'});g.textContent=s==='letterbox'?(Math.abs(src-target)<.01?'Кадр целиком':'Целиком + поля'):'Растягивается до '+targetFormat();}}
  function updateTrimUI(){const e=edit(),d=current?.probe?.duration;if(!e||!d||current.probe.image){$('cm-trim-length').textContent='';return;}
   Object.assign($('cm-trim-range').style,{left:e.start/d*100+'%',width:Math.max(0,(e.end-e.start)/d*100)+'%'});$('cm-playhead').style.left=Math.min(100,(e.time||0)/d*100)+'%';
-  const len=e.end-e.start,s=workspace.settings;$('cm-trim-length').textContent='Фрагмент '+time(len)+(s.tailmix?' · с хвостами '+time(len+s.tailSeconds):'');}
+  const len=e.end-e.start,s=workspace.settings,hasAudio=s.musicMix!==false&&workspace.music.length>0;
+  $('cm-trim-length').textContent=s.mode==='unique'?'Длительность '+time(d)+(hasAudio?' · с аудио':''):'Фрагмент '+time(len)+(s.tailmix?' · с хвостами '+time(len+s.tailSeconds):hasAudio?' · только аудио':'');}
  function setTime(t){const e=edit();if(!e)return;e.time=Math.max(0,Math.min(current.probe.duration,Math.round(t*1000)/1000));$('cm-seek').value=e.time;$('cm-position').textContent=time(e.time);updateTrimUI();save();schedulePreview();}
  function stepFrame(dir){if(!current?.probe||current.probe.image)return;setTime((edit().time||0)+dir/(current.probe.frameRate||30));}
  function setTrim(key,value){const e=edit(),d=current.probe.duration,v=Math.round(Number(value)*1000)/1000;
@@ -338,7 +339,7 @@
   $('cm-cancel').disabled=!busy;renderActive();updateEstimate();renderJobs();if(was&&!busy&&current)schedulePreview();}
  function renderActive(){const j=jobs.find(v=>v.status==='running');$('cm-launch-progress').hidden=!j;if(!j)return;$('cm-active-progress').value=Math.round(j.progress*100);$('cm-active-label').textContent=Math.round(j.progress*100)+'% · '+j.outputs.length+' из '+(j.total||'?')+' · '+j.label;}
  const jobTitle=j=>(j.mode==='unique'?'Варианты':'Clean3')+' · '+new Date(j.createdAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
- function jobMeta(j){const s=j.summary;if(!s)return 'Задача из прежней версии · параметры доступны через «Взять настройки».';return [s.mode==='clean'?'Форматы '+s.formats.join(', ')+' · '+(scaleLabels[s.scale]||s.scale)+(s.tailmix?' · хвосты':''):plural(s.copies,'копия','копии','копий'),j.sources?plural(j.sources.length,'исходник','исходника','исходников'):'',s.preset?'пресет «'+s.preset+'»':'',s.nameTag?'метка '+s.nameTag:''].filter(Boolean).join(' · ');}
+ function jobMeta(j){const s=j.summary;if(!s)return 'Задача из прежней версии · параметры доступны через «Взять настройки».';return [s.mode==='clean'?'Форматы '+s.formats.join(', ')+' · '+(scaleLabels[s.scale]||s.scale)+(s.tailmix?' · хвосты':s.music?' · только аудио':''):plural(s.copies,'копия','копии','копий')+(s.music?' · только аудио':''),j.sources?plural(j.sources.length,'исходник','исходника','исходников'):'',s.preset?'пресет «'+s.preset+'»':'',s.nameTag?'метка '+s.nameTag:''].filter(Boolean).join(' · ');}
  /** Groups outputs by source: new jobs carry input IDs; older jobs fall back to the NNN_ name prefix. */
  function groupOutputs(j){const groups=new Map(),sources=j.sources||[];
   for(const o of j.outputs){let key=o.input,name;if(!key){const n=Number(/^(\d{3})_/.exec(o.name)?.[1]);key=sources[n-1]?.id||'#'+(n||0);}name=sources.find(s=>s.id===key)?.name||refs.get(key)?.name||(key.startsWith('#')?'Исходник '+key.slice(1):'Исходник');
@@ -573,12 +574,15 @@
   btn.disabled=true;if(lbl)lbl.textContent='Обновляем…';
   status('Скачиваем и устанавливаем обновление с GitHub…');
   try{
+   if(source){source.onerror=null;source.close();source=null;}
    const r=await api('update-apply',{method:'POST',data:{}});
    updatePending=null;
+   sessionStorage.removeItem('creoToken');
    if(lbl)lbl.textContent='Обновлено!';
    status('Обновление успешно установлено ('+plural(r.filesUpdated||0,'файл','файла','файлов')+'). Перезагружаем студию…');
-   setTimeout(()=>window.location.reload(),900);
+   setTimeout(()=>window.location.reload(),600);
   }catch(e){
+   events();
    btn.disabled=false;
    if(lbl)lbl.textContent=updatePending?'Установить обновление':'Проверить обновления';
    throw e;

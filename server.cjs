@@ -19,7 +19,7 @@ function buildAPI(factory = createCreoAPI) {
   });
 }
 let api = buildAPI();
-function reloadAPI() {
+async function reloadAPI() {
   try {
     for (const key of Object.keys(require.cache)) {
       if (key.startsWith(path.join(root, 'src')) || key === path.join(root, 'package.json')) {
@@ -30,7 +30,9 @@ function reloadAPI() {
     const { createCreoAPI: freshFactory } = require('./src/server/creo-api.cjs');
     const nextApi = buildAPI(freshFactory);
     const prevApi = api;
-    nextApi.ready.then(() => { api = nextApi; prevApi.close(); }).catch(() => {});
+    await nextApi.ready;
+    api = nextApi;
+    prevApi.close();
   } catch (error) {
     console.error('Ошибка перезагрузки модулей:', error.message);
   }

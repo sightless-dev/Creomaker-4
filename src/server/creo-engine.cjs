@@ -256,6 +256,7 @@ class Engine {
             const edit = s.mode === 'clean' ? editConfig(request.edits?.[input.id], probe.duration) : null;
             entry.verification = await Verification.verify(this, input.path, output, {
               requireSignals: requiresSignals,
+              requireAudio: requiresSignals || music.length > 0,
               metadataEnabled: s.metadata,
               mainDuration: edit ? edit.end - edit.start : probe.duration,
               tailSeconds: s.mode === 'clean' && s.tailmix ? s.tailSeconds : 0

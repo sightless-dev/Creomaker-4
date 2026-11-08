@@ -240,6 +240,11 @@ async function applyUpdate(root) {
       await fs.chmod(tmp, 0o755).catch(() => {});
     }
     await fs.rename(tmp, dest);
+    if (['start.cmd', 'Start CreoMaker.cmd', 'Start CreoMaker.command'].includes(entry.relPath) && path.basename(root) === 'app') {
+      const parentDest = path.join(path.dirname(root), entry.relPath);
+      await fs.copyFile(dest, parentDest).catch(() => {});
+      if (entry.relPath.endsWith('.command')) await fs.chmod(parentDest, 0o755).catch(() => {});
+    }
     filesUpdated++;
   }
 

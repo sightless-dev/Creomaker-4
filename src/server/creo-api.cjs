@@ -65,8 +65,8 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    if(route==='update-apply'&&req.method==='POST'){
     if(active||starting)throw Error('Дождитесь завершения текущей обработки перед установкой обновления.');
     const result=await Updater.applyUpdate(root);
+    if(typeof onUpdated==='function')await onUpdated();
     json(res,200,result);
-    if(typeof onUpdated==='function')setImmediate(()=>onUpdated());
     return true;
    }
    if(route==='library'&&req.method==='GET'){await refreshLibrary();json(res,200,[...media.values()].filter(item=>item.builtin).map(publicMedia));return true;}
@@ -104,7 +104,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     if(request.presetName!=null&&(typeof request.presetName!=='string'||request.presetName.length>60))throw Error('Неверное название пресета.');
     const s=request.settings,id=crypto.randomUUID();
     const job={id,status:'running',progress:0,label:'Подготовка',logs:[],outputs:[],createdAt:new Date().toISOString(),mode:s.mode,total:request.inputs.length*(s.mode==='clean'?s.formats.length:s.copies),
-     sources:request.inputs.map(i=>({id:i,name:resolveMedia(i).name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,nameTag:s.nameTag,preset:request.presetName||''}};
+     sources:request.inputs.map(i=>({id:i,name:resolveMedia(i).name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
     const folder=path.join(results,id);await fsp.mkdir(folder);await fsp.writeFile(path.join(folder,'request.json'),JSON.stringify(request,null,2));jobs.set(id,job);
     if(active||(wantsQueue&&starting)){job.status='queued';job.label='В очереди';queue.push({job,request,folder});await persistJob(job);broadcast(job);json(res,202,publicJob(job));return true;}
     await persistJob(job);startJob(job,request,folder);json(res,202,publicJob(job));return true;}finally{if(!wantsQueue)starting=false;drain();}

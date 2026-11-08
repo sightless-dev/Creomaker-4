@@ -29,7 +29,7 @@
 
  /* ---------- Batch dry plan ---------- */
  /** inputs: [{id,name,image?,duration?}] in batch order. Returns exactly what a job with these settings would create. */
- function planBatch({settings,inputs,edits={},tails=[]}){
+ function planBatch({settings,inputs,edits={},tails=[],music}){
   const s=settings||{},clean=s.mode!=='unique',items=[],warnings=[],names=new Set(),duplicates=[];let index=0,seconds=0;
   const targets=clean?(Array.isArray(s.formats)?s.formats.filter(f=>formats[f]):[]):Array.from({length:Math.max(0,Math.round(Number(s.copies)||0))},(_,i)=>i+1);
   for(const m of inputs||[]){
@@ -46,6 +46,7 @@
   if(!included.length)warnings.push({level:'error',text:skipped.length?'В пакете нет видео для Clean3. Переключитесь на «Варианты» или выберите видео.':'Отметьте исходники для обработки.'});
   if(included.length>200)warnings.push({level:'error',text:'Не более 200 исходников в одной задаче.'});
   if(clean&&s.tailmix&&!tails.length)warnings.push({level:'error',text:'Хвосты включены, но не выбраны. Выберите хвосты или выключите их.'});
+  if(s.musicMix&&Array.isArray(music)&&!music.length)warnings.push({level:'info',text:'Наложение аудио включено, но дорожки не выбраны — ролик сохранится с исходным звуком.'});
   if(skipped.length)warnings.push({level:'info',text:'Пропущено изображений: '+skipped.length+' — они обрабатываются только в режиме «Варианты».'});
   if(duplicates.length)warnings.push({level:'error',text:'Совпадают имена результатов: '+duplicates.slice(0,3).join(', ')});
   const total=included.reduce((n,i)=>n+i.outputs.length,0);
