@@ -1,0 +1,100 @@
+{
+  "name": "creomaker-desktop",
+  "productName": "CreoMaker",
+  "version": "1.1.0",
+  "private": true,
+  "description": "CreoMaker Studio — desktop application (Windows / macOS)",
+  "author": "CreoMaker",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "icon": "electron scripts/make-icon.cjs",
+    "prepare:win": "node scripts/prepare-bundle.cjs --platform win --arch x64",
+    "dist:win": "node scripts/prepare-bundle.cjs --platform win --arch x64 && electron-builder --win nsis --x64 --publish never",
+    "dist:mac-arm64": "node scripts/prepare-bundle.cjs --platform mac --arch arm64 && electron-builder --mac dmg --arm64 --publish never",
+    "dist:mac-x64": "node scripts/prepare-bundle.cjs --platform mac --arch x64 && electron-builder --mac dmg --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "37.10.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.creomaker.studio",
+    "productName": "CreoMaker",
+    "copyright": "CreoMaker",
+    "compression": "store",
+    "asar": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build-res"
+    },
+    "files": [
+      "main.cjs",
+      "selftest.cjs",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bundle/app-code",
+        "to": "app-code"
+      },
+      {
+        "from": "bundle/bin",
+        "to": "bin"
+      },
+      {
+        "from": "bundle/assets",
+        "to": "assets"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "icon": "build-res/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "11.0",
+      "darkModeSupport": true,
+      "artifactName": "CreoMaker-${version}-macOS-${arch}.${ext}",
+      "target": "dmg"
+    },
+    "dmg": {
+      "format": "ULFO",
+      "title": "CreoMaker",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 410,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 560,
+        "height": 380
+      }
+    },
+    "win": {
+      "icon": "build-res/icon.png",
+      "target": "nsis",
+      "artifactName": "CreoMaker-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CreoMaker",
+      "runAfterFinish": true
+    }
+  },
+  "allowScripts": {
+    "electron@37.10.3": true
+  }
+}

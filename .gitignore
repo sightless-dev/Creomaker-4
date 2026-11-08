@@ -2,9 +2,10 @@
 data/
 
 # Platform binaries & bundled media (distributed in platform archives)
-tools/
-runtime/
-assets/
+/tools/
+/runtime/
+/assets/
+!src/server/assets/
 
 # Distribution archives & temporary build/test outputs
 *.zip

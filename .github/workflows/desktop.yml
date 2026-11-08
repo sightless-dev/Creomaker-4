@@ -1,0 +1,173 @@
+name: Desktop build (macOS & Windows)
+
+# Builds the CreoMaker desktop app (.dmg for macOS, .exe setup for Windows),
+# launches each package on real runner OS machines, runs the UI self-test
+# with screenshots and publishes everything to the "desktop-latest" release.
+
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-build
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure desktop-latest pre-release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view desktop-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+          gh release create desktop-latest --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "CreoMaker Desktop — последняя сборка" \
+            --notes "Автоматическая сборка десктопной версии CreoMaker для macOS. Обновления кода приходят через кнопку «Проверить обновления», как и в браузерной версии."
+
+  mac:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download bundled library (assets-v1)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .assets .assets-zip
+          if gh release download assets-v1 --repo "$GITHUB_REPOSITORY" --pattern 'CreoMaker-assets*.zip' --dir .assets-zip; then
+            for z in .assets-zip/*.zip; do ditto -x -k "$z" .assets; done
+            rm -rf .assets-zip
+            du -sh .assets
+          else
+            echo "::warning::Release assets-v1 not found — building without the bundled library"
+          fi
+
+      - name: Install toolchain
+        run: |
+          npm install --no-audit --no-fund
+          node node_modules/electron/install.js
+          node scripts/make-icon.cjs
+
+      - name: Prepare bundle
+        run: node scripts/prepare-bundle.cjs --platform mac --arch ${{ matrix.arch }} --assets .assets
+
+      - name: Build .dmg
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
+
+      - name: Self-test packaged app on macOS
+        run: |
+          APP="$(ls -d dist/mac*/CreoMaker.app | head -n 1)"
+          echo "App: $APP"
+          node scripts/run-selftest.cjs "$APP/Contents/MacOS/CreoMaker"
+          sw_vers > selftest/system.txt
+          uname -m >> selftest/system.txt
+          codesign -dv --verbose=2 "$APP" > selftest/codesign.txt 2>&1 || true
+          codesign --verify --deep --strict --verbose=2 "$APP" >> selftest/codesign.txt 2>&1 || true
+          ls -la selftest
+          ditto -c -k selftest "selftest-macOS-${{ matrix.arch }}.zip"
+
+      - name: Upload to desktop-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.dmg "selftest-macOS-${{ matrix.arch }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-macOS-${{ matrix.arch }}
+          path: desktop/selftest
+
+  windows:
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download bundled library (assets-v1)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p .assets .assets-zip
+          if gh release download assets-v1 --repo "$GITHUB_REPOSITORY" --pattern 'CreoMaker-assets*.zip' --dir .assets-zip; then
+            for z in .assets-zip/*.zip; do tar -xf "$z" -C .assets; done
+            rm -rf .assets-zip
+          else
+            echo "::warning::Release assets-v1 not found — building without the bundled library"
+          fi
+
+      - name: Install toolchain
+        run: |
+          npm install --no-audit --no-fund
+          node node_modules/electron/install.js
+          node scripts/make-icon.cjs
+
+      - name: Prepare bundle
+        run: node scripts/prepare-bundle.cjs --platform win --arch x64 --assets .assets
+
+      - name: Build Setup .exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Self-test packaged app on Windows
+        run: |
+          node scripts/run-selftest.cjs "dist/win-unpacked/CreoMaker.exe"
+          Compress-Archive -Path selftest -DestinationPath "selftest-Windows-x64.zip"
+
+      - name: Upload to desktop-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          ls -la dist
+          gh release upload desktop-latest --repo "$GITHUB_REPOSITORY" --clobber dist/*.exe "selftest-Windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-Windows-x64
+          path: desktop/selftest
+
