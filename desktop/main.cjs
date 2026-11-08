@@ -10,7 +10,7 @@
  *     library are shipped inside the app resources;
  *   - the window simply shows http://127.0.0.1:<port>, so UI and behaviour stay identical.
  */
-const { app, BrowserWindow, Menu, shell, utilityProcess, dialog, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, shell, utilityProcess, dialog, nativeTheme, ipcMain } = require('electron');
 const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
@@ -157,11 +157,16 @@ async function startServer(codeDir, port) {
 
 function buildMenu() {
   const clickUpdate = () => mainWindow?.webContents.executeJavaScript("document.getElementById('cm-update-btn')?.click()").catch(() => {});
+  const clickChangeDir = () => mainWindow?.webContents.executeJavaScript("window.changeOutputDir?.()").catch(() => {});
+  const clickOpenDir = () => mainWindow?.webContents.executeJavaScript("window.openOutputDir?.()").catch(() => {});
   const template = [
     ...(isMac ? [{
       label: 'CreoMaker',
       submenu: [
         { role: 'about', label: 'О программе CreoMaker' },
+        { label: 'Папка вывода креативов…', click: clickChangeDir },
+        { label: 'Открыть папку вывода', click: clickOpenDir },
+        { type: 'separator' },
         { label: 'Проверить обновления…', click: clickUpdate },
         { type: 'separator' },
         { role: 'hide', label: 'Скрыть CreoMaker' },
@@ -173,6 +178,9 @@ function buildMenu() {
     }] : [{
       label: 'Файл',
       submenu: [
+        { label: 'Папка вывода креативов…', click: clickChangeDir },
+        { label: 'Открыть папку вывода', click: clickOpenDir },
+        { type: 'separator' },
         { label: 'Проверить обновления…', click: clickUpdate },
         { type: 'separator' },
         { role: 'quit', label: 'Выход' }
@@ -222,7 +230,23 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function registerIPC() {
+  ipcMain.handle('dialog:select-directory', async (_event, defaultPath) => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите папку для вывода готовых креативов',
+      defaultPath: defaultPath || undefined,
+      properties: ['openDirectory', 'createDirectory']
+    });
+    return res.canceled ? null : res.filePaths[0];
+  });
+  ipcMain.handle('shell:open-path', async (_event, p) => {
+    if (p) await shell.openPath(p);
+  });
+}
+
 function createWindow() {
+  registerIPC();
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -232,7 +256,13 @@ function createWindow() {
     title: 'CreoMaker Studio',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#07090e' : '#e9edf6',
     autoHideMenuBar: !isMac,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false }
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+      spellcheck: false
+    }
   });
   mainWindow.once('ready-to-show', () => { if (!SELFTEST_DIR || process.env.CREOMAKER_SELFTEST_SHOW !== '0') mainWindow.show(); });
   mainWindow.on('closed', () => { mainWindow = null; });

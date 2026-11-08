@@ -374,6 +374,84 @@
   }
  }
 
+ /* ---------- Output Directory Settings ---------- */
+ let currentOutputRoot='',defaultOutputRoot='',isCustomOutput=false;
+ function updateOutputDirUI(root,defRoot,isCustom){
+  if(root)currentOutputRoot=root;
+  if(defRoot)defaultOutputRoot=defRoot;
+  if(typeof isCustom==='boolean')isCustomOutput=isCustom;
+  else isCustomOutput=Boolean(currentOutputRoot&&defaultOutputRoot&&currentOutputRoot!==defaultOutputRoot);
+  const text=$('cm-output-dir-text'),rootEl=$('cm-root-path'),resetBtn=$('cm-reset-dir-btn');
+  if(text){text.textContent=currentOutputRoot;text.title=currentOutputRoot;}
+  if(rootEl){
+   const full=String(currentOutputRoot||''),parts=full.split(/[\\/]/).filter(Boolean);
+   rootEl.textContent=parts.length>3?'…'+full.slice(full.length-parts.slice(-3).join('/').length-1):full;
+   rootEl.title='Папка вывода: '+full;
+   rootEl.dataset.full=full;
+  }
+  if(resetBtn)resetBtn.hidden=!isCustomOutput;
+ }
+ function openOutputDirDialog(){
+  const dlg=$('cm-dir-dialog'),inp=$('cm-dir-input'),hint=$('cm-dir-hint'),err=$('cm-dir-error');
+  if(!dlg)return;
+  if(inp)inp.value=currentOutputRoot||'';
+  if(hint)hint.textContent=defaultOutputRoot?'По умолчанию: '+defaultOutputRoot:'';
+  if(err){err.hidden=true;err.textContent='';}
+  dlg.showModal();
+  inp?.focus();
+ }
+ function closeOutputDirDialog(){$('cm-dir-dialog')?.close();}
+ async function setOutputDir(pathVal){
+  const err=$('cm-dir-error');if(err)err.hidden=true;
+  try{
+   const r=await api('set-output-dir',{method:'POST',data:{path:pathVal}});
+   updateOutputDirUI(r.outputRoot,r.defaultOutputRoot,r.isCustom);
+   closeOutputDirDialog();
+   status(r.isCustom?'Папка вывода сохранена: '+r.outputRoot:'Папка вывода сброшена по умолчанию.');
+  }catch(e){
+   if(err){err.hidden=false;err.textContent=e.message;}
+   else status(e.message,true);
+   throw e;
+  }
+ }
+ async function browseOutputDir(){
+  if(window.creoDesktop?.selectDirectory){
+   const picked=await window.creoDesktop.selectDirectory(currentOutputRoot||defaultOutputRoot);
+   if(picked){
+    const inp=$('cm-dir-input');
+    if(inp&&$('cm-dir-dialog')?.open)inp.value=picked;
+    else await setOutputDir(picked);
+   }
+   return;
+  }
+  try{
+   const r=await api('browse-output-dir',{method:'POST',data:{}});
+   if(r.path){
+    const inp=$('cm-dir-input');
+    if(inp&&$('cm-dir-dialog')?.open)inp.value=r.path;
+    else await setOutputDir(r.path);
+    return;
+   }
+   if(r.canceled)return;
+  }catch{}
+  openOutputDirDialog();
+ }
+ async function openRootFolder(){
+  try{
+   if(window.creoDesktop?.openPath&&currentOutputRoot){
+    await window.creoDesktop.openPath(currentOutputRoot);
+    status('Папка открыта: '+currentOutputRoot);
+    return;
+   }
+   const r=await api('open-root-folder',{method:'POST',data:{}});
+   status('Папка открыта: '+r.path);
+  }catch(e){
+   status('Не удалось открыть папку: '+e.message,true);
+  }
+ }
+ window.changeOutputDir=browseOutputDir;
+ window.openOutputDir=openRootFolder;
+
  function renderLibrary(){for(const kind of ['tails','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
   $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
@@ -472,7 +550,7 @@
    if(saved&&saved.settings){workspace={...blankWorkspace(),...saved,settings:{...initial,...saved.settings}};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
     const n=P.normalizePresets(saved.userPresets);workspace.userPresets=n.presets;dropped=n.dropped;if(dropped.length)workspace.rejectedPresets=[...(saved.rejectedPresets||[]),...(saved.userPresets||[]).filter(p=>!n.presets.some(x=>x.id===p?.id))].slice(-40);}
    else{workspace=blankWorkspace();workspace.selected=visibleInputs().map(m=>m.id);for(const kind of ['tails','music','tailMusic'])workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:8});}
-   history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';{const full=String(catalog.outputRoot||''),parts=full.split(/[\\/]/).filter(Boolean),el=$('cm-root-path');el.textContent=parts.length>3?'…'+full.slice(full.length-parts.slice(-3).join('/').length-1):full;el.title=full;el.dataset.full=full;}
+   history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';updateOutputDirUI(catalog.outputRoot,catalog.defaultOutputRoot,catalog.isCustomOutput);
    settingsHTML();renderFiles();renderLibrary();updateMode();renderActive();renderJobs();$('cm-cancel').disabled=!busy;updateUndo();if(visible)events();
    status(!available?'FFmpeg не найден. Запустите CreoMaker через файл запуска.':dropped.length?'Повреждённые пресеты не загружены ('+dropped.map(d=>d.name).join(', ')+'). Остальные настройки восстановлены.':'',!available||!!dropped.length);
   })().catch(e=>{loaded=false;throw e;}).finally(()=>{opening=null;});return opening;}
@@ -605,6 +683,27 @@
  on('cm-job-cancel','click',async()=>{const j=jobs.find(v=>v.id===selectedJob);if(j&&(j.status==='running'||j.status==='queued'))await api('cancel',{method:'POST',data:{id:j.id}});});
  on('cm-jobs','click',e=>{const b=e.target.closest('[data-job]');if(b){selectedJob=b.dataset.job;renderJobs();}});
  on('cm-folder','click',async()=>{const r=await api('open-folder',{method:'POST',data:{id:selectedJob}});status('Папка передана Проводнику: '+r.path);});
+ on('cm-change-dir-btn','click',browseOutputDir);
+ on('cm-footer-change-dir','click',browseOutputDir);
+ on('cm-open-root-btn','click',openRootFolder);
+ on('cm-root-path','click',openRootFolder);
+ on('cm-reset-dir-btn','click',()=>setOutputDir(''));
+ on('cm-dir-browse-btn','click',async()=>{
+  const inp=$('cm-dir-input');
+  if(window.creoDesktop?.selectDirectory){
+   const p=await window.creoDesktop.selectDirectory(inp?.value||currentOutputRoot);
+   if(p&&inp)inp.value=p;
+  }else{
+   try{
+    const r=await api('browse-output-dir',{method:'POST',data:{}});
+    if(r.path&&inp)inp.value=r.path;
+   }catch{}
+  }
+ });
+ on('cm-dir-save-btn','click',()=>setOutputDir($('cm-dir-input')?.value||''));
+ on('cm-dir-reset-btn','click',()=>setOutputDir(''));
+ on('cm-dir-cancel-btn','click',closeOutputDirDialog);
+ on('cm-dir-modal-close','click',closeOutputDirDialog);
  on('cm-copy-path','click',async()=>{const j=jobs.find(j=>j.id===selectedJob);await navigator.clipboard.writeText(j?.outputDir||$('cm-root-path').dataset.full||$('cm-root-path').textContent);status('Путь папки скопирован.');});
  on('cm-detect-gpu','click',async()=>{$('cm-detect-gpu').disabled=true;status('Проверяем GPU коротким тестом кодирования…');try{const h=await api('hardware');$('cm-hardware').textContent=h.available.length?'Доступно: '+h.available.join(', '):'Аппаратный кодировщик недоступен · CPU';status('Проверка GPU завершена.');}finally{$('cm-detect-gpu').disabled=false;}});
  on('cm-empty-list','click',async()=>{if(busy||importTask)throw Error('Дождитесь обработки или загрузки.');checkpoint('скрытие списка');workspace.hiddenInputs=media.filter(m=>m.kind==='inputs').map(m=>m.id);workspace.selected=[];current=null;previewSerial++;clearTimeout(previewTimer);$('cm-original').pause();$('cm-original').removeAttribute('src');$('cm-selected-name').textContent='Выберите исходник';await persist();renderFiles();updateStage();status('Список очищен. Файлы остались в локальной библиотеке — их можно вернуть.');});

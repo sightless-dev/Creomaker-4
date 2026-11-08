@@ -68,6 +68,8 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
     }
     const fontOk = await js("document.fonts.ready.then(() => [...document.fonts].some(f => /inter/i.test(f.family) && f.status === 'loaded'))");
     check('Inter font loaded', fontOk);
+    const outBar = await js("(() => { const b = document.getElementById('cm-output-bar'), t = document.getElementById('cm-output-dir-text'); return { exists: !!b, hasText: !!(t && t.textContent.trim()) }; })()");
+    check('Output directory bar initialized', outBar.exists && outBar.hasText, JSON.stringify(outBar));
 
     const layout = async label => {
       const r = await js(`(() => {

@@ -285,6 +285,17 @@
    <div><h2 id="cm-delivery-title"><span class="cm-step" aria-hidden="true">4</span>Результаты и задачи</h2></div>
    <span id="cm-queue-count" class="pill" hidden></span>
   </div>
+  <div class="cm-output-bar" id="cm-output-bar">
+   <div class="cm-output-info">
+    <span class="cm-output-label"><span data-icon="folder"></span>Папка вывода:</span>
+    <span class="cm-output-path-text" id="cm-output-dir-text" title="Текущая папка для готовых роликов"></span>
+   </div>
+   <div class="button-row cm-output-actions">
+    <button type="button" id="cm-change-dir-btn" class="button small" title="Выбрать другую папку для сохранения готовых роликов"><span data-icon="folder"></span>Выбрать папку</button>
+    <button type="button" id="cm-open-root-btn" class="button small quiet" title="Открыть папку вывода в проводнике / Finder"><span data-icon="link"></span>Открыть</button>
+    <button type="button" id="cm-reset-dir-btn" class="button small quiet" title="Сбросить на папку по умолчанию" hidden><span data-icon="repeat"></span>По умолчанию</button>
+   </div>
+  </div>
   <div class="cm-delivery-grid">
    <div id="cm-jobs" class="cm-jobs" aria-label="Задачи"></div>
    <div class="cm-job-detail">
@@ -308,6 +319,24 @@
  <dialog id="cm-player-dialog" class="modal cm-player-modal" aria-labelledby="cm-player-name"><div class="dialog-heading"><h2 id="cm-player-name">Предпросмотр</h2><button type="button" id="cm-player-compare" class="button small quiet" aria-pressed="false" hidden>Показать исходник</button><button type="button" id="cm-player-close" class="icon-button" aria-label="Закрыть предпросмотр"><span data-icon="close"></span></button></div><div class="cm-player-box"><video id="cm-player" controls preload="none" playsinline hidden></video><img id="cm-player-image" alt="Готовый результат" hidden></div><p id="cm-player-meta" class="hint"></p></dialog>
  <dialog id="cm-copy-count-dialog" aria-labelledby="cm-copy-count-title"><form id="cm-copy-count-form"><h2 id="cm-copy-count-title">Количество копий</h2><label>На каждый исходник (от 1 до 50)<input id="cm-copy-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" required></label><div class="button-row"><button type="submit" class="button primary">Применить</button><button type="button" id="cm-copy-count-cancel" class="button quiet">Отмена</button></div></form></dialog>
  <dialog id="cm-plan-dialog" class="modal cm-plan-modal" aria-labelledby="cm-plan-title"><div class="dialog-heading"><h2 id="cm-plan-title">План обработки</h2><button type="button" id="cm-plan-close" class="icon-button" aria-label="Закрыть план"><span data-icon="close"></span></button></div><p id="cm-plan-totals" class="cm-plan-totals"></p><ul id="cm-plan-warnings" class="cm-plan-warnings"></ul><div id="cm-plan-list" class="cm-plan-list"></div><div class="button-row cm-plan-actions"><button type="button" id="cm-plan-run" class="button primary">Обработать</button><button type="button" id="cm-plan-cancel" class="button quiet">Закрыть</button></div></dialog>
- <footer class="cm-footer"><span class="hint">Локальная студия CreoMaker · все вычисления выполняются на вашем устройстве</span><span id="cm-root-path" class="cm-path"></span></footer>
+ <dialog id="cm-dir-dialog" class="modal cm-dir-modal" aria-labelledby="cm-dir-modal-title">
+  <div class="dialog-heading">
+   <h2 id="cm-dir-modal-title"><span data-icon="folder"></span>Папка вывода креативов</h2>
+   <button type="button" id="cm-dir-modal-close" class="icon-button" aria-label="Закрыть окно"><span data-icon="close"></span></button>
+  </div>
+  <p class="hint">Укажите или выберите папку на компьютере, куда CreoMaker будет сохранять готовые видеоролики.</p>
+  <div class="cm-dir-input-wrap">
+   <input type="text" id="cm-dir-input" class="input" placeholder="Например: D:\Creatives или /Users/name/Movies/CreoMaker" autocomplete="off" spellcheck="false">
+   <button type="button" id="cm-dir-browse-btn" class="button"><span data-icon="folder"></span>Обзор…</button>
+  </div>
+  <p id="cm-dir-hint" class="hint cm-dir-hint"></p>
+  <p id="cm-dir-error" class="cm-job-error" hidden role="alert"></p>
+  <div class="button-row cm-dir-actions">
+   <button type="button" id="cm-dir-save-btn" class="button primary">Сохранить</button>
+   <button type="button" id="cm-dir-reset-btn" class="button quiet">Сбросить по умолчанию</button>
+   <button type="button" id="cm-dir-cancel-btn" class="button quiet">Отмена</button>
+  </div>
+ </dialog>
+ <footer class="cm-footer"><span class="hint">Локальная студия CreoMaker · все вычисления выполняются на вашем устройстве</span><span class="cm-footer-right"><span id="cm-root-path" class="cm-path" title="Папка сохранения результатов"></span><button type="button" id="cm-footer-change-dir" class="cm-text-button" title="Изменить папку вывода">Сменить</button></span></footer>
  <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
 </section></main></body></html>
