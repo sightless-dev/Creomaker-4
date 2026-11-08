@@ -293,10 +293,48 @@
   closeCopyPanel();save();renderFiles();updatePlanIfOpen();status('Монтаж применён к '+plural(targets.length,'видео','видео','видео')+'. Обрезка ограничена длиной каждого файла. Ctrl+Z — отменить.');}
 
  /* ---------- Library (tails/music) ---------- */
+ const inlineAudio=new Audio();let playingTrackKey=null;
+ const previewTrackVolume=pct=>{const v=Number(pct??8);return !Number.isFinite(v)?0.35:v<=0?0:Math.min(1,Math.max(0.25,v/100));};
+ function syncPlayingButtons(){
+  const lib=$('cm-library');if(!lib)return;
+  for(const btn of lib.querySelectorAll('[data-play-track]')){
+   const row=btn.closest('[data-track-id]');
+   const active=!!row&&playingTrackKey===row.dataset.kind+':'+row.dataset.trackId&&!inlineAudio.paused;
+   btn.classList.toggle('is-playing',active);
+   btn.setAttribute('aria-pressed',String(active));
+   btn.innerHTML=icon(active?'pause':'play');
+  }
+ }
+ function stopInlineAudio(){
+  playingTrackKey=null;
+  inlineAudio.pause();
+  inlineAudio.removeAttribute('src');
+  inlineAudio.load();
+  syncPlayingButtons();
+ }
+ function toggleInlineAudio(kind,id,url,rawVolume,name=''){
+  const key=kind+':'+id;
+  if(playingTrackKey===key&&!inlineAudio.paused){stopInlineAudio();status('');return;}
+  if($('cm-player-dialog')?.open)$('cm-player-dialog').close();
+  playingTrackKey=key;
+  inlineAudio.volume=previewTrackVolume(rawVolume);
+  inlineAudio.src=url;
+  syncPlayingButtons();
+  inlineAudio.play().then(()=>{
+   syncPlayingButtons();
+   if(name)status('Прослушивание: '+name+' (нажмите повторно для паузы или выберите другой трек)');
+  }).catch(()=>{
+   stopInlineAudio();
+   status('Не удалось воспроизвести аудиофайл.',true);
+  });
+ }
+ inlineAudio.addEventListener('ended',()=>{stopInlineAudio();status('');});
+ inlineAudio.addEventListener('pause',()=>{if(!inlineAudio.ended)syncPlayingButtons();});
+ inlineAudio.addEventListener('play',syncPlayingButtons);
  function renderLibrary(){for(const kind of ['tails','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
   $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
-  updateTailFields();updateEstimate();}
+  syncPlayingButtons();updateTailFields();updateEstimate();}
 
  /* ---------- Batch plan, validation and launch ---------- */
  function runBlockers(p=plan()){if(!available)return 'FFmpeg не найден — обработка недоступна.';if(importTask)return 'Дождитесь окончания добавления файлов.';if(p.blocking)return p.warnings.find(w=>w.level==='error').text;return '';}
@@ -320,7 +358,7 @@
  function runFeedback(message='',tone=''){
   const field=$('cm-run-feedback');field.textContent=message;field.dataset.tone=tone;
  }
- async function run(){if(!validateFields())return;const p=plan(),reason=runBlockers(p);if(reason){renderPlan(p);if(!$('cm-plan-dialog').open)$('cm-plan-dialog').showModal();status(reason,true);return;}
+ async function run(){if(!validateFields())return;stopInlineAudio();const p=plan(),reason=runBlockers(p);if(reason){renderPlan(p);if(!$('cm-plan-dialog').open)$('cm-plan-dialog').showModal();status(reason,true);return;}
   status('');runFeedback();clearTimeout(previewTimer);await previewQueue.catch(()=>{});try{await persist();}catch(e){status('Настройки не сохранены на устройстве, но задача будет запущена: '+e.message,true);}
   const ids=new Set(p.included),edits={};for(const id of ids)if(workspace.edits[id])edits[id]=structuredClone(workspace.edits[id]);
   const request={settings:structuredClone(workspace.settings),inputs:p.included,tails:[...workspace.tails],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic),edits,presetName:matchedPreset()?.name||''};
@@ -395,7 +433,7 @@
    settingsHTML();renderFiles();renderLibrary();updateMode();renderActive();renderJobs();$('cm-cancel').disabled=!busy;updateUndo();if(visible)events();
    status(!available?'FFmpeg не найден. Запустите CreoMaker через файл запуска.':dropped.length?'Повреждённые пресеты не загружены ('+dropped.map(d=>d.name).join(', ')+'). Остальные настройки восстановлены.':'',!available||!!dropped.length);
   })().catch(e=>{loaded=false;throw e;}).finally(()=>{opening=null;});return opening;}
- function setVisible(value){visible=value;if(!value){previewSerial++;frameReady=false;clearTimeout(previewTimer);for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog'])if($(id).open)$(id).close();$('cm-original').pause();$('cm-player').pause();source?.close();source=null;}}
+ function setVisible(value){visible=value;if(!value){previewSerial++;frameReady=false;clearTimeout(previewTimer);stopInlineAudio();for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog'])if($(id).open)$(id).close();$('cm-original').pause();$('cm-player').pause();source?.close();source=null;}}
  async function close(){$('cm-meta-status').textContent='';$('cm-meta-fields').replaceChildren();
   uploadController?.abort();if(importTask)await importTask.catch(()=>{});if(opening)await opening.catch(()=>{});setVisible(false);if(!loaded&&!token)return;if(loaded)await persist().catch(()=>{});source?.close();
   if(token)await api('session',{method:'DELETE'}).catch(()=>{});token=null;previewSerial++;timelineCache.clear();sourceCache.clear();history.clear();sessionStorage.removeItem('creoToken');loaded=false;current=null;media=[];jobs=[];refs.clear();workspace=blankWorkspace();closePresetForm();closeCopyPanel();
@@ -452,11 +490,11 @@
  on('cm-goto-library','click',()=>{const l=$('cm-library');l.open=true;l.scrollIntoView({block:'start'});l.querySelector('summary').focus({preventScroll:true});});
  on('cm-library','change',e=>{const row=e.target.closest('[data-track-id]');if(!row)return;const {trackId:id,kind}=row.dataset;
   if(e.target.type==='checkbox'){checkpoint('слои');workspace[kind]=workspace[kind].filter(v=>(typeof v==='string'?v:v.id)!==id);if(e.target.checked)workspace[kind].push(kind==='tails'?id:{id,volume:Number(row.querySelector('input[type=number]')?.value??8)});renderLibrary();}
-  else{const v=Number(e.target.value);if(!e.target.checkValidity()){e.target.reportValidity();return;}const track=workspace[kind].find(t=>t.id===id);if(track){checkpoint('громкость','volume:'+id);track.volume=v;}}save();presetState();});
+  else{const v=Number(e.target.value);if(!e.target.checkValidity()){e.target.reportValidity();return;}if(playingTrackKey===kind+':'+id)inlineAudio.volume=previewTrackVolume(v);const track=workspace[kind].find(t=>t.id===id);if(track){checkpoint('громкость','volume:'+id);track.volume=v;}}save();presetState();});
  on('cm-library','click',e=>{const all=e.target.closest('[data-library-all]');if(all){const kind=all.dataset.libraryAll;checkpoint('слои');workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:workspace[kind].find(t=>t.id===m.id)?.volume??8});renderLibrary();save();return;}
   const none=e.target.closest('[data-library-none]');if(none){checkpoint('слои');workspace[none.dataset.libraryNone]=[];renderLibrary();save();return;}
-  const row=e.target.closest('[data-track-id]');if(!row)return;const m=refs.get(row.dataset.trackId);
-  if(e.target.closest('[data-play-track]')){openPlayer({url:mediaURL(m.id),name:m.name,audio:row.dataset.kind!=='tails',volume:Math.min(1,(workspace[row.dataset.kind].find(v=>v.id===m.id)?.volume??100)/100)});return;}
+  const row=e.target.closest('[data-track-id]');if(!row)return;const m=refs.get(row.dataset.trackId);if(!m)return;
+  if(e.target.closest('[data-play-track]')){const kind=row.dataset.kind;if(kind==='tails'){stopInlineAudio();openPlayer({url:mediaURL(m.id),name:m.name,audio:false,volume:1});}else{const volInput=row.querySelector('input[type=number]'),rawVol=volInput?Number(volInput.value):(workspace[kind].find(v=>v.id===m.id)?.volume??8);toggleInlineAudio(kind,m.id,mediaURL(m.id),rawVol,m.name);}return;}
   const move=e.target.closest('[data-order]');if(move){const list=workspace.tails,index=list.indexOf(m.id),target=index+Number(move.dataset.order);if(index>=0&&target>=0&&target<list.length){checkpoint('порядок хвостов');[list[index],list[target]]=[list[target],list[index]];renderLibrary();save();row.parentElement.querySelector(`[data-track-id="${m.id}"] [data-order="${move.dataset.order}"]`)?.focus();}}});
  on('cm-preview-format','change',e=>{workspace.settings.previewFormat=e.target.value;save();updateCaptions();updateCropGuide();schedulePreview();});
  on('cm-refresh-preview','click',()=>{sourceCache.clear();return preview();});
@@ -534,12 +572,13 @@
   const b=e.target.closest('[data-preview-output]');if(!b)return;const name=b.dataset.previewOutput;openPlayer({url:outputURL(selectedJob,name),name,image:/\.(png|jpg|jpeg|webp|bmp|tiff)$/i.test(name),source:b.dataset.source&&refs.has(b.dataset.source)?b.dataset.source:null});});
  /* Player: result ↔ source toggle keeps the playback position for a direct comparison. */
  let playerState=null;
- function openPlayer({url,name,image=false,audio=false,volume=1,source=null}){playerState={url,name,image,source,showingSource:false};$('cm-player').classList.toggle('cm-audio',audio);$('cm-player-name').textContent=name;$('cm-player-compare').hidden=!source;$('cm-player-compare').setAttribute('aria-pressed','false');$('cm-player-compare').textContent='Показать исходник';$('cm-player-meta').textContent=source?'Результат · исходник: '+(refs.get(source)?.name||''):'';showMedia(url,image,volume);if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();}
+ function openPlayer({url,name,image=false,audio=false,volume=1,source=null}){stopInlineAudio();playerState={url,name,image,source,showingSource:false};$('cm-player').classList.toggle('cm-audio',audio);$('cm-player-name').textContent=name;$('cm-player-compare').hidden=!source;$('cm-player-compare').setAttribute('aria-pressed','false');$('cm-player-compare').textContent='Показать исходник';$('cm-player-meta').textContent=source?'Результат · исходник: '+(refs.get(source)?.name||''):'';showMedia(url,image,volume);if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();}
  function showMedia(url,image,volume=1,at=0){if(image){$('cm-player').pause();$('cm-player').hidden=true;$('cm-player-image').src=url;$('cm-player-image').hidden=false;return;}$('cm-player-image').hidden=true;$('cm-player').volume=volume;$('cm-player').src=url;$('cm-player').hidden=false;if(at)$('cm-player').addEventListener('loadedmetadata',()=>{$('cm-player').currentTime=Math.min(at,$('cm-player').duration||at);},{once:true});$('cm-player').play().catch(()=>{});}
  on('cm-player-compare','click',()=>{if(!playerState?.source)return;const s=playerState,at=$('cm-player').hidden?0:$('cm-player').currentTime,srcMedia=refs.get(s.source);s.showingSource=!s.showingSource;
   if(s.showingSource)showMedia(mediaURL(s.source),isImage(srcMedia),1,at);else showMedia(s.url,s.image,1,at);
   $('cm-player-compare').setAttribute('aria-pressed',String(s.showingSource));$('cm-player-compare').textContent=s.showingSource?'Показать результат':'Показать исходник';$('cm-player-meta').textContent=(s.showingSource?'Исходник: '+srcMedia.name:'Результат · исходник: '+srcMedia.name);});
- $('cm-player-close').onclick=()=>{$('cm-player-dialog').close();};$('cm-player-dialog').addEventListener('close',()=>{$('cm-player').pause();playerState=null;});
+ $('cm-player-close').onclick=()=>{$('cm-player-dialog').close();};$('cm-player-dialog').addEventListener('close',()=>{$('cm-player').pause();$('cm-player').removeAttribute('src');$('cm-player').load();playerState=null;});
+ for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog'])$(id)?.addEventListener('click',e=>{if(e.target===$(id))$(id).close();});
  on('cm-export-folder','click',async()=>{const dir=await window.showDirectoryPicker({mode:'readwrite'}),j=jobs.find(j=>j.id===selectedJob);const outputDir=await dir.getDirectoryHandle('CreoMaker-'+j.id,{create:true});let n=0;for(const file of j.outputs){status('Сохраняем '+(++n)+'/'+j.outputs.length+' · '+file.name);const response=await fetch(outputURL(j.id,file.name));if(!response.ok)throw Error('Не удалось прочитать результат '+file.name+'. Сохранено '+(n-1)+' из '+j.outputs.length+'.');const handle=await outputDir.getFileHandle(file.name,{create:true}),stream=await handle.createWritable();await response.body.pipeTo(stream);}status('Все результаты ('+n+') сохранены в папку CreoMaker-'+j.id.slice(0,8)+'….');});
  // Presets
  on('cm-user-preset','change',e=>{workspace.activePreset=e.target.value||undefined;save();renderPresets();});

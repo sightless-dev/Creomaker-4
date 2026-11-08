@@ -1886,6 +1886,12 @@
   min-height: 28px;
 }
 
+#creo-view .cm-track [data-play-track].is-playing {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* ---------- 4. Jobs and Results ---------- */
 .cm-delivery {
   margin-top: var(--panel-gap);
