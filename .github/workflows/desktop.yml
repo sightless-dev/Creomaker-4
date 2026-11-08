@@ -1,15 +1,18 @@
 name: Desktop build (macOS & Windows)
 
-# Builds the CreoMaker desktop app (.dmg for macOS, .exe setup for Windows),
+# Builds the lightweight CreoMaker desktop app (.dmg for macOS, .exe setup for Windows),
 # launches each package on real runner OS machines, runs the UI self-test
 # with screenshots and publishes everything to the "desktop-latest" release.
-
+# The media library (~1.2 GB) is downloaded on demand inside the application.
 
 on:
   push:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'public/**'
+      - 'src/**'
+      - 'server.cjs'
       - '.github/workflows/desktop.yml'
   workflow_dispatch:
 
@@ -31,7 +34,7 @@ jobs:
           gh release view desktop-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
           gh release create desktop-latest --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "CreoMaker Desktop — последняя сборка" \
-            --notes "Автоматическая сборка десктопной версии CreoMaker для macOS. Обновления кода приходят через кнопку «Проверить обновления», как и в браузерной версии."
+            --notes "Автоматическая легковесная сборка десктопной версии CreoMaker для macOS и Windows (~150 МБ). Медиабиблиотека хвостов и музыки скачивается по запросу прямо из приложения. Обновления кода приходят через кнопку «Проверить обновления»."
 
   mac:
     needs: release
@@ -57,27 +60,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Download bundled library (assets-v1)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .assets .assets-zip
-          if gh release download assets-v1 --repo "$GITHUB_REPOSITORY" --pattern 'CreoMaker-assets*.zip' --dir .assets-zip; then
-            for z in .assets-zip/*.zip; do ditto -x -k "$z" .assets; done
-            rm -rf .assets-zip
-            du -sh .assets
-          else
-            echo "::warning::Release assets-v1 not found — building without the bundled library"
-          fi
-
       - name: Install toolchain
         run: |
           npm install --no-audit --no-fund
           node node_modules/electron/install.js
           node scripts/make-icon.cjs
 
-      - name: Prepare bundle
-        run: node scripts/prepare-bundle.cjs --platform mac --arch ${{ matrix.arch }} --assets .assets
+      - name: Prepare bundle (lightweight, on-demand assets)
+        run: node scripts/prepare-bundle.cjs --platform mac --arch ${{ matrix.arch }} --assets none
 
       - name: Build .dmg
         env:
@@ -132,27 +122,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Download bundled library (assets-v1)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          mkdir -p .assets .assets-zip
-          if gh release download assets-v1 --repo "$GITHUB_REPOSITORY" --pattern 'CreoMaker-assets*.zip' --dir .assets-zip; then
-            for z in .assets-zip/*.zip; do tar -xf "$z" -C .assets; done
-            rm -rf .assets-zip
-          else
-            echo "::warning::Release assets-v1 not found — building without the bundled library"
-          fi
-
       - name: Install toolchain
         run: |
           npm install --no-audit --no-fund
           node node_modules/electron/install.js
           node scripts/make-icon.cjs
 
-      - name: Prepare bundle
-        run: node scripts/prepare-bundle.cjs --platform win --arch x64 --assets .assets
+      - name: Prepare bundle (lightweight, on-demand assets)
+        run: node scripts/prepare-bundle.cjs --platform win --arch x64 --assets none
 
       - name: Build Setup .exe
         env:
@@ -184,4 +161,3 @@ jobs:
         with:
           name: selftest-Windows-x64
           path: desktop/selftest
-

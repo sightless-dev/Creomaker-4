@@ -128,18 +128,20 @@ async function prepareTools() {
 
 async function prepareAssets() {
   const out = path.join(bundle, 'assets');
-  const source = args.assets ? path.resolve(desktopDir, args.assets) : path.join(repoRoot, 'assets');
-  if (fs.existsSync(source) && (await fsp.readdir(source)).length) {
-    // Accept both "<dir>/Tails" and "<dir>/assets/Tails" layouts.
-    const inner = fs.existsSync(path.join(source, 'assets')) ? path.join(source, 'assets') : source;
-    await syncDir(inner, out);
-    console.log('assets ready · ' + (await fsp.readdir(out)).join(', '));
-  } else {
-    await fsp.rm(out, { recursive: true, force: true });
-    await fsp.mkdir(out, { recursive: true });
-    await fsp.writeFile(path.join(out, 'README.txt'), 'Bundled library is not included in this build.\n');
-    console.warn('WARNING: assets not found (' + source + '), building without the bundled library.');
+  await fsp.rm(out, { recursive: true, force: true });
+  await fsp.mkdir(out, { recursive: true });
+  if (args.assets && args.assets !== 'none' && args.assets !== 'skip') {
+    const source = path.resolve(desktopDir, args.assets);
+    if (fs.existsSync(source) && (await fsp.readdir(source)).length) {
+      // Accept both "<dir>/Tails" and "<dir>/assets/Tails" layouts.
+      const inner = fs.existsSync(path.join(source, 'assets')) ? path.join(source, 'assets') : source;
+      await syncDir(inner, out);
+      console.log('assets ready · ' + (await fsp.readdir(out)).join(', '));
+      return;
+    }
   }
+  await fsp.writeFile(path.join(out, 'README.txt'), 'Bundled library is downloaded on demand inside the application.\n');
+  console.log('assets skipped (on-demand download enabled)');
 }
 
 (async () => {

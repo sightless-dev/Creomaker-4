@@ -112,12 +112,21 @@ function toolPaths() {
 
 async function startServer(codeDir, port) {
   const tools = toolPaths();
+  const bundledAssets = path.join(resourcesRoot(), 'assets');
+  let hasBundledAssets = false;
+  try {
+    const list = fs.readdirSync(bundledAssets);
+    hasBundledAssets = list.some(d => ['Tails', 'tails', 'music'].includes(d) && fs.readdirSync(path.join(bundledAssets, d)).length > 0);
+  } catch {}
+  const assetDir = hasBundledAssets ? bundledAssets : path.join(app.getPath('userData'), 'assets');
+  try { fs.mkdirSync(assetDir, { recursive: true }); } catch {}
+
   const env = {
     ...process.env,
     CREOMAKER_PORT: String(port),
     CREOMAKER_DESKTOP: '1',
     CREO_DATA_DIR: path.join(app.getPath('userData'), 'data'),
-    CREO_ASSET_DIR: path.join(resourcesRoot(), 'assets')
+    CREO_ASSET_DIR: assetDir
   };
   if (fs.existsSync(tools.ffmpeg)) env.CREO_FFMPEG_PATH = tools.ffmpeg;
   if (fs.existsSync(tools.ffprobe)) env.CREO_FFPROBE_PATH = tools.ffprobe;

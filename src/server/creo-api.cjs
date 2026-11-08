@@ -4,6 +4,7 @@ const {Engine,config,editConfig,defaults,formats,videoExts,imageExts,audioExts}=
 const Profiles=require('../shared/creo-profiles.js');
 const {bundledLibrary}=require('./creo-library.cjs');
 const Updater=require('./creo-updater.cjs');
+const AssetsManager=require('./creo-assets-manager.cjs');
 const mime={'.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.aac':'audio/aac','.ogg':'audio/ogg','.flac':'audio/flac','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.bmp':'image/bmp','.tiff':'image/tiff'};
 const validId=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
 function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(root,'assets'),onUpdated}={}){
@@ -24,6 +25,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
   return scanning;
  }
  function broadcast(j){const value='event: job\ndata: '+JSON.stringify(publicJob(j))+'\n\n';for(const c of clients)if(!c.write(value)){clients.delete(c);c.end();}}
+ function broadcastAssets(p){const value='event: assets-progress\ndata: '+JSON.stringify(p)+'\n\n';for(const c of clients)if(!c.write(value)){clients.delete(c);c.end();}}
  const ready=(async()=>{
   await Promise.all([uploads,results,previews].map(d=>fsp.mkdir(d,{recursive:true})));
   try{const saved=JSON.parse(await fsp.readFile(path.join(dir,'library.json'),'utf8'));for(const m of saved){if(validId(m.id)&&path.basename(m.path)===m.path&&['inputs','tails','music','tailMusic'].includes(m.kind)){const full=path.join(uploads,m.path);if(fs.existsSync(full))media.set(m.id,{...m,path:full});}}}catch(e){if(e.code!=='ENOENT')throw Error('Не удалось прочитать библиотеку CreoMaker. Исходный файл сохранён.');}
@@ -67,6 +69,16 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     const result=await Updater.applyUpdate(root);
     if(typeof onUpdated==='function')await onUpdated();
     json(res,200,result);
+    return true;
+   }
+   if(route==='assets-status'&&req.method==='GET'){json(res,200,await AssetsManager.getStatus(assetRoot));return true;}
+   if(route==='assets-download'&&req.method==='POST'){
+    AssetsManager.startDownload(assetRoot,{
+     onProgress:p=>broadcastAssets(p),
+     onComplete:async()=>{await refreshLibrary();broadcastAssets({status:'ready',percent:100,message:'Библиотека готова'});},
+     onError:err=>broadcastAssets({status:'error',error:err.message})
+    }).catch(()=>{});
+    json(res,202,await AssetsManager.getStatus(assetRoot));
     return true;
    }
    if(route==='library'&&req.method==='GET'){await refreshLibrary();json(res,200,[...media.values()].filter(item=>item.builtin).map(publicMedia));return true;}

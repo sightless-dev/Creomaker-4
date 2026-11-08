@@ -253,6 +253,25 @@
     <button type="button" id="cm-library-toggle-all" class="button small quiet"><span data-icon="list"></span>Развернуть списки</button>
     <button type="button" id="cm-library-refresh" class="button small quiet"><span data-icon="repeat"></span>Обновить файлы</button>
    </div>
+   <div id="cm-assets-banner" class="cm-assets-banner" hidden>
+    <div class="cm-assets-banner-content">
+     <div class="cm-assets-banner-icon"><span data-icon="gift"></span></div>
+     <div class="cm-assets-banner-info">
+      <strong>Базовая библиотека хвостов и музыки</strong>
+      <p>26 видеохвостов и 13 музыкальных треков (1.2 ГБ). Скачайте с GitHub для автоматической подклейки к роликам.</p>
+     </div>
+     <div class="cm-assets-banner-action">
+      <button type="button" id="cm-assets-download-btn" class="button primary"><span data-icon="download"></span><span id="cm-assets-download-label">Скачать библиотеку (1.2 ГБ)</span></button>
+     </div>
+    </div>
+    <div id="cm-assets-progress-wrap" class="cm-assets-progress-wrap" hidden>
+     <div class="cm-assets-progress-head">
+      <span id="cm-assets-progress-status">Скачивание библиотеки…</span>
+      <span id="cm-assets-progress-percent">0%</span>
+     </div>
+     <progress id="cm-assets-progress-bar" value="0" max="100"></progress>
+    </div>
+   </div>
    <div class="cm-layers-grid">
     <details class="panel cm-disclosure"><summary><span><span data-icon="film"></span>Видеохвосты</span><span id="cm-tails-count" class="hint">0</span></summary><p class="hint">Все подряд, затем повтор цикла. Стрелки меняют порядок.</p><div class="cm-list-tools"><button type="button" id="cm-add-tails" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="tails" class="cm-text-button">Все</button><button type="button" data-library-none="tails" class="cm-text-button">Снять выбор</button></div><div id="cm-tails-list" class="cm-tracks"></div></details>
     <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка всего ролика</span><span id="cm-music-count" class="hint">0</span></summary><p class="hint">Все дорожки звучат вместе. Каждая зациклена, громкость — отдельно.</p><div class="cm-list-tools"><button type="button" id="cm-add-music" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="music" class="cm-text-button">Все</button><button type="button" data-library-none="music" class="cm-text-button">Снять выбор</button></div><div id="cm-music-list" class="cm-tracks"></div></details>

@@ -331,10 +331,53 @@
  inlineAudio.addEventListener('ended',()=>{stopInlineAudio();status('');});
  inlineAudio.addEventListener('pause',()=>{if(!inlineAudio.ended)syncPlayingButtons();});
  inlineAudio.addEventListener('play',syncPlayingButtons);
+
+ /* ---------- Assets Download Banner ---------- */
+ function updateAssetsProgressUI(p){
+  const banner=$('cm-assets-banner'),btn=$('cm-assets-download-btn'),lbl=$('cm-assets-download-label'),wrap=$('cm-assets-progress-wrap'),bar=$('cm-assets-progress-bar'),st=$('cm-assets-progress-status'),pct=$('cm-assets-progress-percent');
+  if(!banner)return;
+  if(!p||p.status==='idle'){wrap.hidden=true;if(btn)btn.disabled=false;if(lbl)lbl.textContent='Скачать библиотеку (1.2 ГБ)';return;}
+  wrap.hidden=false;if(btn)btn.disabled=true;
+  if(bar)bar.value=p.percent||0;
+  if(pct)pct.textContent=(p.percent||0)+'%';
+  if(st)st.textContent=p.message||(p.status==='extracting'?'Распаковка файлов в библиотеку…':'Скачивание библиотеки…');
+  if(p.status==='ready'){
+   setTimeout(()=>{wrap.hidden=true;banner.hidden=true;},1500);
+   status('Библиотека успешно установлена и готова к работе!');
+   refreshLibrary();
+  }else if(p.status==='error'){
+   if(btn)btn.disabled=false;
+   if(st)st.textContent='Ошибка скачивания: '+(p.error||'сбой сети');
+   status('Не удалось скачать библиотеку: '+(p.error||'сбой сети'),true);
+  }
+ }
+ async function checkAssetsStatus(){
+  const hasBuiltin=media.some(m=>m.builtin);
+  const banner=$('cm-assets-banner');if(!banner)return;
+  if(hasBuiltin){banner.hidden=true;return;}
+  try{
+   const s=await api('assets-status');
+   if(s.installed){banner.hidden=true;return;}
+   banner.hidden=false;
+   if(s.downloading&&s.progress)updateAssetsProgressUI(s.progress);
+  }catch{}
+ }
+ async function triggerAssetsDownload(){
+  const btn=$('cm-assets-download-btn');if(btn)btn.disabled=true;
+  updateAssetsProgressUI({status:'connecting',percent:0,message:'Подключение к GitHub…'});
+  try{
+   const r=await api('assets-download',{method:'POST',data:{}});
+   if(r.progress)updateAssetsProgressUI(r.progress);
+  }catch(e){
+   if(btn)btn.disabled=false;
+   updateAssetsProgressUI({status:'error',error:e.message});
+  }
+ }
+
  function renderLibrary(){for(const kind of ['tails','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
   $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
-  syncPlayingButtons();updateTailFields();updateEstimate();}
+  syncPlayingButtons();updateTailFields();updateEstimate();checkAssetsStatus();}
 
  /* ---------- Batch plan, validation and launch ---------- */
  function runBlockers(p=plan()){if(!available)return 'FFmpeg не найден — обработка недоступна.';if(importTask)return 'Дождитесь окончания добавления файлов.';if(p.blocking)return p.warnings.find(w=>w.level==='error').text;return '';}
@@ -410,7 +453,7 @@
   $('cm-folder').disabled=chosen.status==='queued';$('cm-export-folder').hidden=!window.showDirectoryPicker;$('cm-export-folder').disabled=!chosen.outputs.length;
   $('cm-reuse-job').disabled=false;$('cm-retry-job').disabled=active;$('cm-retry-job').lastChild.textContent=busy?'Повторить в очереди':'Повторить';
   $('cm-job-cancel').hidden=!active;$('cm-job-cancel').textContent=chosen.status==='queued'?'Убрать из очереди':'Остановить';}
- function events(){source?.close();source=new EventSource('/api/creo/events?token='+token);source.addEventListener('job',e=>jobEvent(JSON.parse(e.data)));source.onerror=()=>status('Связь с локальным обработчиком прервана. Проверьте, запущен ли start.cmd.',true);}
+ function events(){source?.close();source=new EventSource('/api/creo/events?token='+token);source.addEventListener('job',e=>jobEvent(JSON.parse(e.data)));source.addEventListener('assets-progress',e=>updateAssetsProgressUI(JSON.parse(e.data)));source.onerror=()=>status('Связь с локальным обработчиком прервана. Проверьте, запущен ли start.cmd.',true);}
  async function reuseJob(){const r=await api('job-request?id='+encodeURIComponent(selectedJob));checkpoint('настройки задачи');const missing=[];
   const settings={...r.settings};delete settings.encoder;delete settings.tailMode;delete settings.musicMode;workspace.settings={...initial,...settings};
   const keep=(id,kind)=>{const ok=refs.get(id)?.kind===kind;if(!ok)missing.push(id);return ok;};
@@ -469,6 +512,7 @@
   try{await refreshLibrary();status('Библиотека обновлена.');}
   finally{button.disabled=false;}
  });
+ on('cm-assets-download-btn','click',triggerAssetsDownload);
  document.querySelectorAll('[data-cm-mode]').forEach(b=>b.onclick=()=>switchMode(b.dataset.cmMode));
  function switchMode(mode){if(mode===workspace.settings.mode)return;checkpoint('режим');workspace.settings.mode=mode;save();updateMode();renderZones();if(current)preview().catch(e=>status(e.message,true));}
  on('cm-image-note','click',e=>{const b=e.target.closest('[data-switch-mode]');if(b)switchMode(b.dataset.switchMode);});

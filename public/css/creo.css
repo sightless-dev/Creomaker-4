@@ -1892,6 +1892,113 @@
   background: var(--accent-soft);
 }
 
+/* ---------- Assets Download Banner ---------- */
+.cm-assets-banner {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-m);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cm-assets-banner[hidden] {
+  display: none !important;
+}
+
+.cm-assets-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cm-assets-banner-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cm-assets-banner-info {
+  flex: 1;
+  min-width: 240px;
+}
+
+.cm-assets-banner-info strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.cm-assets-banner-info p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.cm-assets-banner-action {
+  flex-shrink: 0;
+}
+
+.cm-assets-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius-s);
+  padding: 10px 14px;
+  border: 1px solid var(--border-soft);
+}
+
+.cm-assets-progress-wrap[hidden] {
+  display: none !important;
+}
+
+.cm-assets-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cm-assets-progress-wrap progress {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  appearance: none;
+  background: var(--input);
+  border: none;
+}
+
+.cm-assets-progress-wrap progress::-webkit-progress-bar {
+  background: var(--input);
+  border-radius: 4px;
+}
+
+.cm-assets-progress-wrap progress::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2, #ff5a68));
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.cm-assets-progress-wrap progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
 /* ---------- 4. Jobs and Results ---------- */
 .cm-delivery {
   margin-top: var(--panel-gap);

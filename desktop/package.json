@@ -9,10 +9,10 @@
   "scripts": {
     "start": "electron .",
     "icon": "electron scripts/make-icon.cjs",
-    "prepare:win": "node scripts/prepare-bundle.cjs --platform win --arch x64",
-    "dist:win": "node scripts/prepare-bundle.cjs --platform win --arch x64 && electron-builder --win nsis --x64 --publish never",
-    "dist:mac-arm64": "node scripts/prepare-bundle.cjs --platform mac --arch arm64 && electron-builder --mac dmg --arm64 --publish never",
-    "dist:mac-x64": "node scripts/prepare-bundle.cjs --platform mac --arch x64 && electron-builder --mac dmg --x64 --publish never"
+    "prepare:win": "node scripts/prepare-bundle.cjs --platform win --arch x64 --assets none",
+    "dist:win": "node scripts/prepare-bundle.cjs --platform win --arch x64 --assets none && electron-builder --win nsis --x64 --publish never",
+    "dist:mac-arm64": "node scripts/prepare-bundle.cjs --platform mac --arch arm64 --assets none && electron-builder --mac dmg --arm64 --publish never",
+    "dist:mac-x64": "node scripts/prepare-bundle.cjs --platform mac --arch x64 --assets none && electron-builder --mac dmg --x64 --publish never"
   },
   "devDependencies": {
     "electron": "37.10.3",

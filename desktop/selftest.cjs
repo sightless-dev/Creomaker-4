@@ -57,7 +57,11 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
     const lib = await js("({tails: document.querySelectorAll('#cm-tails-list [data-track-id]').length, music: document.querySelectorAll('#cm-music-list [data-track-id]').length, tailMusic: document.querySelectorAll('#cm-tailMusic-list [data-track-id]').length})");
     report.library = lib;
     const hasAssets = (lib.tails + lib.music + lib.tailMusic) > 0;
-    check('Bundled library status', true, hasAssets ? 'Вшитая библиотека подключена (' + JSON.stringify(lib) + ')' : 'Сборка без вшитых ассетов (пользовательские файлы подключаются вручную)');
+    check('Bundled library status', true, hasAssets ? 'Вшитая библиотека подключена (' + JSON.stringify(lib) + ')' : 'Сборка без вшитых ассетов (загрузка по запросу с GitHub)');
+    if (!hasAssets) {
+      const bannerVisible = await js("(() => { const b = document.getElementById('cm-assets-banner'); return b && !b.hidden; })()");
+      check('On-demand assets banner visible', bannerVisible);
+    }
     const fontOk = await js("document.fonts.ready.then(() => [...document.fonts].some(f => /inter/i.test(f.family) && f.status === 'loaded'))");
     check('Inter font loaded', fontOk);
 

@@ -4,3 +4,5 @@ dist/
 .assets/
 .assets-zip/
 selftest/
+selftest-*/
+*.zip
