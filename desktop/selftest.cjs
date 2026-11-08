@@ -59,7 +59,11 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
     const hasAssets = (lib.tails + lib.music + lib.tailMusic) > 0;
     check('Bundled library status', true, hasAssets ? 'Вшитая библиотека подключена (' + JSON.stringify(lib) + ')' : 'Сборка без вшитых ассетов (загрузка по запросу с GitHub)');
     if (!hasAssets) {
-      const bannerVisible = await js("(() => { const b = document.getElementById('cm-assets-banner'); return b && !b.hidden; })()");
+      let bannerVisible = false;
+      for (let i = 0; i < 30 && !bannerVisible; i++) {
+        bannerVisible = await js("(() => { const b = document.getElementById('cm-assets-banner'); return !!b && !b.hidden; })()");
+        if (!bannerVisible) await sleep(200);
+      }
       check('On-demand assets banner visible', bannerVisible);
     }
     const fontOk = await js("document.fonts.ready.then(() => [...document.fonts].some(f => /inter/i.test(f.family) && f.status === 'loaded'))");
