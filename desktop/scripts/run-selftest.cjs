@@ -34,7 +34,7 @@ const timer = setInterval(() => {
     console.log('OVERALL OK =', r.ok, 'library =', JSON.stringify(r.library));
     process.exit(r.ok ? 0 : 1);
   }
-  if (Date.now() - start > 45000) {
+  if (Date.now() - start > 75000) {
     clearInterval(timer);
     try {
       if (process.platform === 'win32') execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' });

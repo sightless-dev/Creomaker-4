@@ -128,7 +128,7 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
     }
 
     // 6. Updater wiring (talks to GitHub).
-    await js("window.scrollTo(0, 0); document.getElementById('cm-update-btn')?.click()");
+    await js("window.confirm = () => false; window.scrollTo(0, 0); document.getElementById('cm-update-btn')?.click()");
     let upd = '';
     for (let i = 0; i < 40; i++) {
       await sleep(500);
