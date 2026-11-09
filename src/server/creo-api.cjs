@@ -7,12 +7,9 @@ const Updater=require('./creo-updater.cjs');
 const AssetsManager=require('./creo-assets-manager.cjs');
 const mime={'.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.aac':'audio/aac','.ogg':'audio/ogg','.flac':'audio/flac','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.bmp':'image/bmp','.tiff':'image/tiff'};
 const validId=v=>typeof v==='string'&&/^[\p{L}\p{N}._-]{1,140}$/u.test(v)&&!v.includes('..')&&path.basename(v)===v;
-function generateJobFolder({createdAt=new Date(),mode='clean',inputs=[],tag='',preset=''}){
-  const d=createdAt instanceof Date?createdAt:new Date(createdAt);
-  const pad=n=>String(n).padStart(2,'0');
-  const timestamp=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+'-'+pad(d.getMinutes())+'-'+pad(d.getSeconds());
+function generateJobFolder({mode='clean',inputs=[],tag='',preset=''}={}){
   const modeStr=mode==='clean'?'Clean3':'Уникализация';
-  const parts=[timestamp,modeStr];
+  const parts=[modeStr];
   if(inputs.length>0){
     const first=inputs[0];
     const firstName=typeof first==='string'?first:(first?.name||'');

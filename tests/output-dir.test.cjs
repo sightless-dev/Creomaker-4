@@ -192,7 +192,7 @@ test('job output folder: human-readable name format with date, mode and source',
     assert.equal(jobRes.status, 202);
     assert.ok(jobRes.json.id);
     assert.doesNotMatch(jobRes.json.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'should not be a raw UUID');
-    assert.match(jobRes.json.id, /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_Clean3_PL_PAR_006/, 'readable format');
+    assert.match(jobRes.json.id, /^Clean3_PL_PAR_006/, 'readable format [Mode]_[Source]_[Extra]');
     assert.ok(fs.existsSync(jobRes.json.outputDir), 'output folder exists on disk');
 
     api2.close();
