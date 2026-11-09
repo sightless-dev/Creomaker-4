@@ -191,6 +191,25 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    if(route==='validate-project'&&req.method==='POST'){const w=await body(req);w.settings=config(w.settings);if(!Array.isArray(w.selected)||w.selected.length>200||!w.edits||typeof w.edits!=='object')throw Error('Некорректный проект.');for(const id of w.selected)if(resolveMedia(id).kind!=='inputs')throw Error('Неверный исходник.');for(const key of ['tails','music','tailMusic']){if(!Array.isArray(w[key])||w[key].length>100)throw Error('Неверная группа '+key);for(const v of w[key]){if(resolveMedia(key==='tails'?v:v.id).kind!==key)throw Error('Неверная группа медиа.');if(key!=='tails'&&(!Number.isFinite(v.volume)||v.volume<0||v.volume>200))throw Error('Неверная громкость.');}}const edits={};for(const [id,e]of Object.entries(w.edits)){const m=resolveMedia(id);if(m.kind!=='inputs')throw Error('Неверный исходник монтажа.');const p=await engine.probe(m.path);edits[id]={...editConfig(e,p.duration),time:Math.max(0,Math.min(p.duration,Number(e.time)||0))};}const {presets:userPresets,dropped}=Profiles.normalizePresets(w.userPresets);for(const p of userPresets){try{config({...w.settings,...p.settings});}catch(e){throw Error('Пресет «'+p.name+'»: '+e.message);}}json(res,200,{settings:w.settings,selected:w.selected,tails:w.tails,music:w.music,tailMusic:w.tailMusic,edits,userPresets,droppedPresets:dropped});return true;}
    if(route==='job-request'&&req.method==='GET'){const j=jobs.get(url.searchParams.get('id'));if(!j)throw Error('Задача не найдена.');const request=JSON.parse(await fsp.readFile(path.join(j.outputDir||path.join(results,j.id),'request.json'),'utf8'));delete request.queue;json(res,200,request);return true;}
    if(route==='cancel'&&req.method==='POST'){const r=await body(req);if(active?.id===r.id)active.ctrl.abort();else{const i=queue.findIndex(q=>q.job.id===r.id);if(i>=0){const [{job}]=queue.splice(i,1);job.status='cancelled';job.label='Убрана из очереди до запуска.';job.logs.push({time:new Date().toISOString(),text:job.label});await persistJob(job).catch(()=>{});broadcast(job);for(const q of queue)broadcast(q.job);}}json(res,200,{ok:true});return true;}
+   if(route==='clear-jobs'&&req.method==='POST'){
+    let cleared=0;
+    for(const [id,j] of [...jobs.entries()]){
+     if(j.status==='running'||j.status==='queued')continue;
+     const jobDir=j.outputDir||path.join(results,id);
+     await fsp.unlink(path.join(jobDir,'job.json')).catch(()=>{});
+     jobs.delete(id);cleared++;
+    }
+    json(res,200,{ok:true,cleared});return true;
+   }
+   if(route==='delete-job'&&req.method==='POST'){
+    const r=await body(req);const j=jobs.get(r.id);
+    if(!j)throw Error('Задача не найдена.');
+    if(j.status==='running'||j.status==='queued')throw Error('Нельзя удалить выполняющуюся задачу. Сначала остановите её.');
+    const jobDir=j.outputDir||path.join(results,j.id);
+    await fsp.unlink(path.join(jobDir,'job.json')).catch(()=>{});
+    jobs.delete(j.id);
+    json(res,200,{ok:true,id:j.id});return true;
+   }
    if(route==='events'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');clients.add(res);for(const j of jobs.values())res.write('event: job\ndata: '+JSON.stringify(publicJob(j))+'\n\n');req.on('close',()=>clients.delete(res));return true;}
     if(route==='verification'&&req.method==='GET'){
      const job=jobs.get(url.searchParams.get('job')),name=url.searchParams.get('name');

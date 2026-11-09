@@ -472,7 +472,7 @@ pre {
   .standalone-bar {
     padding: 0 14px;
   }
-  .standalone-bar small, .standalone-privacy, .cm-update-btn #cm-update-label {
+  .standalone-bar small, .standalone-privacy, .cm-saved, .cm-update-btn #cm-update-label {
     display: none;
   }
   .cm-update-btn {

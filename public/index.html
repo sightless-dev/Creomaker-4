@@ -6,7 +6,8 @@
 <header class="standalone-bar">
  <h1 class="standalone-brand"><span>C</span>CreoMaker<small>Локальная медиа-студия</small></h1>
  <div class="standalone-bar-right">
-  <span class="standalone-privacy"><span data-icon="lock"></span>100% локально на ПК</span>
+  <span class="pill" id="cm-ffmpeg">Локальный обработчик</span>
+  <span id="cm-saved" class="cm-saved hint" role="status">Автосохранение</span>
   <button type="button" id="cm-update-btn" class="button small quiet cm-update-btn" title="Проверить обновления на GitHub"><span data-icon="refresh"></span><span id="cm-update-label">Проверить обновления</span></button>
   <button id="theme-toggle" class="icon-button" aria-label="Переключить тему" title="Переключить тему оформления"><span data-icon="moon"></span></button>
  </div>
@@ -52,8 +53,6 @@
    </div>
   </div>
   <div class="view-actions cm-heading-tools">
-   <span class="pill" id="cm-ffmpeg">Локальный обработчик</span>
-   <span id="cm-saved" class="cm-saved hint" role="status">Автосохранение</span>
    <button type="button" id="cm-undo" class="icon-button" aria-label="Отменить последнее изменение" data-tooltip="Отменить · Ctrl+Z" disabled><span data-icon="undo"></span></button>
   </div>
  </header>
@@ -249,7 +248,6 @@
   <summary><h2 id="cm-library-title"><span data-icon="music"></span>Библиотека хвостов и фоновой музыки</h2></summary>
   <div class="cm-library-body">
    <div class="cm-section-title">
-    <p class="hint">Отметьте аудиодорожки для наложения в обоих режимах (Режим 1 и Уникализация) и видеохвосты для склейки в Режиме 1.</p>
     <button type="button" id="cm-library-toggle-all" class="button small quiet"><span data-icon="list"></span>Развернуть списки</button>
     <button type="button" id="cm-library-refresh" class="button small quiet"><span data-icon="repeat"></span>Обновить файлы</button>
    </div>
@@ -274,7 +272,7 @@
    </div>
    <div class="cm-layers-grid">
     <details class="panel cm-disclosure"><summary><span><span data-icon="film"></span>Видеохвосты</span><span id="cm-tails-count" class="hint">0</span></summary><p class="hint">Все подряд, затем повтор цикла. Стрелки меняют порядок.</p><div class="cm-list-tools"><button type="button" id="cm-add-tails" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="tails" class="cm-text-button">Все</button><button type="button" data-library-none="tails" class="cm-text-button">Снять выбор</button></div><div id="cm-tails-list" class="cm-tracks"></div></details>
-    <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка всего ролика</span><span id="cm-music-count" class="hint">0</span></summary><p class="hint">Все дорожки звучат вместе. Каждая зациклена, громкость — отдельно.</p><div class="cm-list-tools"><button type="button" id="cm-add-music" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="music" class="cm-text-button">Все</button><button type="button" data-library-none="music" class="cm-text-button">Снять выбор</button></div><div id="cm-music-list" class="cm-tracks"></div></details>
+    <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка всего ролика</span><span id="cm-music-count" class="hint">0</span></summary><div class="cm-list-tools"><button type="button" id="cm-add-music" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="music" class="cm-text-button">Все</button><button type="button" data-library-none="music" class="cm-text-button">Снять выбор</button></div><div id="cm-music-list" class="cm-tracks"></div></details>
     <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка хвостов</span><span id="cm-tailMusic-count" class="hint">0</span></summary><p class="hint">Все дорожки вместе, только после основного видео.</p><div class="cm-list-tools"><button type="button" id="cm-add-tailMusic" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="tailMusic" class="cm-text-button">Все</button><button type="button" data-library-none="tailMusic" class="cm-text-button">Снять выбор</button></div><div id="cm-tailMusic-list" class="cm-tracks"></div></details>
    </div>
   </div>
@@ -283,7 +281,10 @@
  <section class="panel cm-delivery" hidden id="cm-delivery" aria-labelledby="cm-delivery-title">
   <div class="cm-section-title">
    <div><h2 id="cm-delivery-title"><span class="cm-step" aria-hidden="true">4</span>Результаты и задачи</h2></div>
-   <span id="cm-queue-count" class="pill" hidden></span>
+   <div class="button-row cm-delivery-tools">
+    <button type="button" id="cm-clear-jobs" class="button small quiet" title="Очистить список завершённых задач"><span data-icon="trash"></span>Очистить список</button>
+    <span id="cm-queue-count" class="pill" hidden></span>
+   </div>
   </div>
   <div class="cm-output-bar" id="cm-output-bar">
    <div class="cm-output-info">
@@ -300,10 +301,11 @@
    <div id="cm-jobs" class="cm-jobs" aria-label="Задачи"></div>
    <div class="cm-job-detail">
     <div class="cm-job-head">
-     <div class="cm-job-heading"><h3 id="cm-job-title">Пока нет задач</h3><p id="cm-job-meta" class="hint"></p></div>
+     <div class="cm-job-heading"><h3 id="cm-job-title">Пока нет задач</h3></div>
      <div class="button-row cm-job-actions">
       <button type="button" id="cm-folder" class="button small" disabled><span data-icon="folder"></span>Открыть папку</button>
       <button type="button" id="cm-export-folder" class="button small quiet" disabled><span data-icon="download"></span>Сохранить все файлы</button>
+      <button type="button" id="cm-delete-job" class="button small quiet" disabled title="Удалить выбранную задачу из списка"><span data-icon="trash"></span>Удалить</button>
       <button type="button" id="cm-job-cancel" class="button small quiet" hidden>Остановить</button>
      </div>
     </div>

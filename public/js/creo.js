@@ -178,8 +178,7 @@
  /* ---------- Sources ---------- */
  function renderFiles(){const clean=workspace.settings.mode==='clean',all=visibleInputs();
   $('cm-files').innerHTML=all.map(m=>{const image=isImage(m),skip=clean&&image,checked=workspace.selected.includes(m.id),active=current?.id===m.id;
-   const meta=(image?'Фото':'Видео')+(m.probe?.width?' · '+m.probe.width+'×'+m.probe.height:'')+(!image&&m.probe?.duration?' · '+time(m.probe.duration):'')+' · '+bytes(m.size);
-   return `<div class="cm-file${active?' active':''}${skip&&checked?' is-skipped':''}" role="listitem" data-media-id="${m.id}"><input type="checkbox" aria-label="В пакет: ${esc(m.name)}" ${checked?'checked':''}><button type="button" class="cm-file-select" data-select-file aria-current="${active}"><strong>${esc(m.name)}</strong><small>${meta}</small></button>${hasEdit(m.id)&&!image?`<span class="cm-file-flag" title="Есть обрезка или зоны размытия" aria-label="Есть монтаж">${icon('crop')}</span>`:''}${skip?'<span class="cm-badge" title="В режиме Clean3 изображения пропускаются">только уник.</span>':''}</div>`;}).join('');
+   return `<div class="cm-file${active?' active':''}${skip&&checked?' is-skipped':''}" role="listitem" data-media-id="${m.id}"><input type="checkbox" aria-label="В пакет: ${esc(m.name)}" ${checked?'checked':''}><button type="button" class="cm-file-select" data-select-file aria-current="${active}"><strong>${esc(m.name)}</strong></button>${hasEdit(m.id)&&!image?`<span class="cm-file-flag" title="Есть обрезка или зоны размытия" aria-label="Есть монтаж">${icon('crop')}</span>`:''}${skip?'<span class="cm-badge" title="В режиме Clean3 изображения пропускаются">только уник.</span>':''}<button type="button" class="icon-button cm-file-remove" data-remove-file title="Удалить файл" aria-label="Удалить ${esc(m.name)}">${icon('close')}</button></div>`;}).join('');
   const hidden=media.filter(m=>m.kind==='inputs'&&(workspace.hiddenInputs||[]).includes(m.id)).length;
   const toggleBtn=$('cm-toggle-all-files');
   if(toggleBtn){toggleBtn.hidden=!all.length;const allChecked=all.length>0&&all.every(m=>workspace.selected.includes(m.id));toggleBtn.textContent=allChecked?'Снять все':'Выбрать все';}
@@ -519,16 +518,19 @@
  function renderJobs(){const chosen=jobs.find(j=>j.id===selectedJob)||jobs[0],queued=jobs.filter(j=>j.status==='queued').length;
   $('cm-delivery').hidden=!chosen;
   $('cm-queue-count').hidden=!queued;$('cm-queue-count').textContent='В очереди: '+queued;
+  if($('cm-clear-jobs'))$('cm-clear-jobs').disabled=!jobs.some(j=>terminal.has(j.status));
   $('cm-jobs').innerHTML=jobs.map(j=>`<button type="button" class="cm-job ${chosen?.id===j.id?'active':''}" data-job="${j.id}" aria-pressed="${chosen?.id===j.id}"><strong>${esc(jobTitle(j))}</strong><small><span class="cm-state is-${j.status}">${esc(statusLabels[j.status]||j.status)}${j.status==='queued'&&j.queuePosition?' · '+j.queuePosition:''}</span> ${j.outputs.length}${j.total?' / '+j.total:''} файлов${j.summary?.preset?' · '+esc(j.summary.preset):''}</small></button>`).join('')||'<p class="hint">Здесь появятся задачи обработки.</p>';
-  if(!chosen){$('cm-job-title').textContent='Пока нет задач';for(const id of ['cm-folder','cm-export-folder','cm-reuse-job','cm-retry-job'])$(id).disabled=true;$('cm-job-cancel').hidden=true;return;}
+  if(!chosen){$('cm-job-title').textContent='Пока нет задач';for(const id of ['cm-folder','cm-export-folder','cm-delete-job','cm-reuse-job','cm-retry-job'])$(id)&&($(id).disabled=true);$('cm-job-cancel').hidden=true;return;}
   selectedJob=chosen.id;const active=chosen.status==='running'||chosen.status==='queued';
-  $('cm-job-title').textContent=jobTitle(chosen)+' · '+(statusLabels[chosen.status]||chosen.status);$('cm-job-meta').textContent=jobMeta(chosen);
+  $('cm-job-title').textContent=jobTitle(chosen)+' · '+(statusLabels[chosen.status]||chosen.status);
+  if($('cm-job-meta'))$('cm-job-meta').textContent=jobMeta(chosen);
   $('cm-progress').hidden=!active;$('cm-progress').value=chosen.progress*100;
   $('cm-progress-label').textContent=chosen.status==='queued'?'Ждёт своей очереди'+(chosen.queuePosition?' · позиция '+chosen.queuePosition:''):active?Math.round(chosen.progress*100)+'% · '+chosen.label:chosen.label;
   $('cm-job-error').hidden=!chosen.error;$('cm-job-error').textContent=chosen.error?'Ошибка: '+chosen.error:'';
   $('cm-log').textContent=(chosen.logs||[]).map(l=>new Date(l.time).toLocaleTimeString('ru-RU')+'  '+l.text).join('\n')+(chosen.error?'\n'+chosen.error:'');$('cm-output-path').textContent=chosen.outputDir;
   $('cm-results').innerHTML=groupOutputs(chosen).map(g=>`<section class="cm-result-group"><header><strong>${esc(g.name)}</strong><span class="hint">${plural(g.outputs.length,'файл','файла','файлов')}</span>${g.id&&refs.has(g.id)?`<button type="button" class="cm-text-button" data-open-source="${esc(g.id)}">Открыть в редакторе</button>`:''}</header>${g.outputs.map(o=>`<div class="cm-output"><div><strong>${esc(o.name)}</strong><small>${o.width} × ${o.height} · ${bytes(o.size)}${o.duration?' · '+time(o.duration):''}</small>${verificationHTML(o,chosen)}</div><button type="button" class="icon-button" data-preview-output="${esc(o.name)}" data-source="${esc(g.id||'')}" aria-label="Посмотреть ${esc(o.name)}">${icon('eye')}</button><a class="button small quiet" href="${esc(outputURL(chosen.id,o.name,true))}" download aria-label="Скачать ${esc(o.name)}">${icon('download')}Скачать</a></div>`).join('')}</section>`).join('')||(terminal.has(chosen.status)?'<p class="hint">Готовых файлов нет.</p>':'');
   $('cm-folder').disabled=chosen.status==='queued';$('cm-export-folder').hidden=!window.showDirectoryPicker;$('cm-export-folder').disabled=!chosen.outputs.length;
+  if($('cm-delete-job'))$('cm-delete-job').disabled=active;
   $('cm-reuse-job').disabled=false;$('cm-retry-job').disabled=active;$('cm-retry-job').lastChild.textContent=busy?'Повторить в очереди':'Повторить';
   $('cm-job-cancel').hidden=!active;$('cm-job-cancel').textContent=chosen.status==='queued'?'Убрать из очереди':'Остановить';}
  function events(){source?.close();source=new EventSource('/api/creo/events?token='+token);source.addEventListener('job',e=>jobEvent(JSON.parse(e.data)));source.addEventListener('assets-progress',e=>updateAssetsProgressUI(JSON.parse(e.data)));source.onerror=()=>status('Связь с локальным обработчиком прервана. Проверьте, запущен ли start.cmd.',true);}
@@ -598,7 +600,30 @@
  for(const kind of ['inputs','tails','music','tailMusic']){on('cm-add-'+kind,'click',()=>$('cm-pick-'+kind).click());on('cm-pick-'+kind,'change',async e=>{const files=[...e.target.files];e.target.value='';await upload(files,kind);});}
  on('cm-add-folder','click',()=>$('cm-pick-folder').click());on('cm-pick-folder','change',async e=>{const files=[...e.target.files];e.target.value='';await upload(files,'inputs');});
  $('cm-drop').addEventListener('dragover',e=>{e.preventDefault();$('cm-drop').classList.add('drag-over');});$('cm-drop').addEventListener('dragleave',()=>$('cm-drop').classList.remove('drag-over'));$('cm-drop').addEventListener('drop',e=>{e.preventDefault();$('cm-drop').classList.remove('drag-over');upload(e.dataTransfer.files,'inputs').catch(err=>status(err.message,true));});
- on('cm-files','click',e=>{const row=e.target.closest('[data-media-id]');if(row&&e.target.closest('[data-select-file]'))return selectFile(row.dataset.mediaId,{showEditor:true});});
+ on('cm-files','click',e=>{
+  const row=e.target.closest('[data-media-id]');if(!row)return;
+  const id=row.dataset.mediaId;
+  if(e.target.closest('[data-remove-file]')){
+   checkpoint('удаление файла');
+   workspace.hiddenInputs=[...new Set([...(workspace.hiddenInputs||[]),id])];
+   workspace.selected=workspace.selected.filter(v=>v!==id);
+   if(current?.id===id){
+    const remaining=visibleInputs().filter(m=>m.id!==id);
+    current=remaining[0]||null;
+    if(current)selectFile(current.id);
+    else{
+     previewSerial++;clearTimeout(previewTimer);
+     $('cm-original').pause();$('cm-original').removeAttribute('src');
+     $('cm-selected-name').textContent='Выберите исходник';
+     updateStage();
+    }
+   }
+   save();renderFiles();updateStage();
+   status('Файл убран из списка. Его можно вернуть кнопкой «Вернуть из библиотеки».');
+   return;
+  }
+  if(e.target.closest('[data-select-file]'))return selectFile(id,{showEditor:true});
+ });
  on('cm-files','change',e=>{if(e.target.type!=='checkbox')return;const id=e.target.closest('[data-media-id]').dataset.mediaId;checkpoint('состав пакета','batch:'+id);workspace.selected=e.target.checked?[...new Set([...workspace.selected,id])]:workspace.selected.filter(v=>v!==id);save();renderFiles();});
  on('creo-view','change',e=>{
   const key=e.target.dataset.cmSetting;
@@ -712,6 +737,32 @@
  on('cm-restore-list','click',restore);
  on('cm-retry-job','click',async()=>{const request=await api('job-request?id='+encodeURIComponent(selectedJob));const j=await api('jobs',{method:'POST',data:request,query:busy?'?queue=1':''});selectedJob=j.id;jobEvent(j);status(j.status==='queued'?'Повтор задачи добавлен в очередь.':'Задача повторно запущена с сохранёнными параметрами.');});
  on('cm-reuse-job','click',reuseJob);
+ on('cm-clear-jobs','click',async()=>{
+  const finished=jobs.filter(j=>terminal.has(j.status));
+  if(!finished.length){status('Нет завершённых задач для очистки.');return;}
+  if(!await askConfirm('Очистить список задач?','Завершённые задачи ('+finished.length+') будут удалены из списка. Готовые файлы на диске останутся сохранены.','Очистить'))return;
+  try{
+   await api('clear-jobs',{method:'POST',data:{}});
+   jobs=jobs.filter(j=>!terminal.has(j.status));
+   selectedJob=jobs[0]?.id||null;
+   renderJobs();
+   status('Список задач очищен.');
+  }catch(e){status('Не удалось очистить список: '+e.message,true);}
+ });
+ on('cm-delete-job','click',async()=>{
+  if(!selectedJob)return;
+  const j=jobs.find(x=>x.id===selectedJob);
+  if(!j)return;
+  if(j.status==='running'||j.status==='queued'){status('Нельзя удалить выполняющуюся задачу. Сначала остановите её.',true);return;}
+  if(!await askConfirm('Удалить задачу?','Задача будет удалена из списка. Готовые файлы на диске останутся сохранены.','Удалить'))return;
+  try{
+   await api('delete-job',{method:'POST',data:{id:j.id}});
+   jobs=jobs.filter(x=>x.id!==j.id);
+   selectedJob=jobs[0]?.id||null;
+   renderJobs();
+   status('Задача удалена из списка.');
+  }catch(e){status('Не удалось удалить задачу: '+e.message,true);}
+ });
  on('cm-results','click',e=>{const src=e.target.closest('[data-open-source]');if(src){const id=src.dataset.openSource;workspace.hiddenInputs=(workspace.hiddenInputs||[]).filter(v=>v!==id);save();renderFiles();return selectFile(id,{showEditor:true});}
   const b=e.target.closest('[data-preview-output]');if(!b)return;const name=b.dataset.previewOutput;openPlayer({url:outputURL(selectedJob,name),name,image:/\.(png|jpg|jpeg|webp|bmp|tiff)$/i.test(name),source:b.dataset.source&&refs.has(b.dataset.source)?b.dataset.source:null});});
  /* Player: result ↔ source toggle keeps the playback position for a direct comparison. */

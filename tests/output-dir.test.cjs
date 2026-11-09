@@ -104,7 +104,16 @@ test('output directory: default detection, custom setting and reset', async () =
     assert.equal(openFail.status, 400);
     assert.match(openFail.json.error, /Задача не найдена/);
 
-    // 8. Reset back to default
+    // 8. Clear jobs and delete job API
+    const clearRes = await request('POST', '/api/creo/clear-jobs', {});
+    assert.equal(clearRes.status, 200);
+    assert.equal(clearRes.json.ok, true);
+
+    const deleteFail = await request('POST', '/api/creo/delete-job', { id: 'non-existent-id' });
+    assert.equal(deleteFail.status, 400);
+    assert.match(deleteFail.json.error, /Задача не найдена/);
+
+    // 9. Reset back to default
     const resetRes = await request('POST', '/api/creo/set-output-dir', { path: '' });
     assert.equal(resetRes.status, 200);
     assert.equal(resetRes.json.ok, true);
