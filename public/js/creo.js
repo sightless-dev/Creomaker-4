@@ -20,7 +20,7 @@
 
  /* ---------- Basics ---------- */
  const status=(text,error=false)=>{$('cm-status').textContent=text;$('cm-status').classList.toggle('error',error);};
- const on=(id,event,fn)=>$(id).addEventListener(event,e=>{try{Promise.resolve(fn(e)).catch(err=>status(err.message,true));}catch(err){status(err.message,true);}});
+ const on=(id,event,fn)=>{const el=$(id);if(!el)return;el.addEventListener(event,e=>{try{Promise.resolve(fn(e)).catch(err=>status(err.message,true));}catch(err){status(err.message,true);}});};
  async function api(route,{method='GET',data,body,signal,query=''}={}){
   const res=await fetch('/api/creo/'+route+query,{method,headers:{'X-Creo-Token':token,...(data?{'Content-Type':'application/json'}:{})},body:data?JSON.stringify(data):body,signal});
   let out;try{out=await res.json();}catch{throw Error('Локальный обработчик вернул некорректный ответ ('+res.status+').');}
@@ -75,6 +75,11 @@
   const c=workspace.settings.copies;
   document.querySelectorAll('[data-quick-copy]').forEach(b=>{const active=Number(b.dataset.quickCopy)===c;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
  }
+ function syncScaleUI(){
+  const s=workspace.settings.scale||'crop';
+  document.querySelectorAll('[data-scale]').forEach(b=>{const active=b.dataset.scale===s;b.classList.toggle('active',active);b.setAttribute('aria-checked',String(active));});
+  if($('cm-scale'))$('cm-scale').value=s;
+ }
  function configurePlatform(){
   const windows=platform==='win32',select=$('cm-acceleration');
   for(const option of select.options){option.hidden=!windows&&option.value!=='cpu';option.disabled=option.hidden;}
@@ -90,7 +95,7 @@
   $('cm-signal-change').checked=s.signalChange;$('cm-verify-results').checked=s.verifyResults;
   $('cm-quality').innerHTML=number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v]))+number('threads','Потоков процессора',1,8);
   $('cm-formats').innerHTML=Object.entries(formatLabels).map(([key,label])=>{const [w,h]=P.formats[key]||[];return `<label class="cm-format"><input type="checkbox" data-format="${key}" ${s.formats.includes(key)?'checked':''}><span class="cm-ratio" data-ratio="${key}" aria-hidden="true"></span><strong>${key}</strong><small>${label}</small><em class="cm-format-dim">${w}×${h}</em></label>`;}).join('');
-  $('cm-preview-format').value=s.previewFormat||'';$('cm-scale').value=s.scale;$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
+  $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
   $('cm-unique-fields').innerHTML=[['uniqueNoise','Шум',0,15,1],['hue','Оттенок ±',0,10,.1],['saturation','Насыщенность',.95,1.1,.01],['contrast','Контраст',.95,1.1,.01],['brightness','Яркость',-.1,.1,.01],['speed','Скорость ± %',0,5,1],['jpeg','Качество JPEG',80,100,1],['zoom','Зум до %',0,5,.1],['rotate','Поворот ± °',0,5,.1],['blur','Размытие / резкость',0,5,.1],['pitch','Тон аудио ± %',0,30,1]].map(args=>number(...args)).join('');
   $('cm-copy-value').textContent=s.copies;syncCopyPills();$('cm-flip').checked=s.flip;$('cm-metadata').checked=s.metadata;$('cm-acceleration').value=platform==='win32'?s.acceleration:'cpu';$('cm-name-tag').value=s.nameTag||'';
   $('cm-country').value=s.country;$('cm-metadata-title').value=s.metadataTitle;$('cm-meta-status').textContent='';metadataFields();
@@ -108,13 +113,14 @@
   if(!unique)parts.push(s.tailmix?(n('tails')?'Хвосты '+length:'Хвосты: 0'):'Без хвостов');
   parts.push(musicOn?(off?'Только аудио: '+n('music'):'Музыка: '+n('music')):'Аудио выкл.');
   if(!unique&&s.tailmix&&musicOn&&n('tailMusic'))parts.push('для хвостов: '+n('tailMusic'));
-  $('cm-layers-summary').textContent=parts.join(' · ');}
+  if($('cm-layers-summary'))$('cm-layers-summary').textContent=parts.join(' · ');}
  function updateNameExample(){const s=workspace.settings,m=current&&workspace.selected.includes(current.id)?current:selectedMedia()[0]||current;const unique=s.mode==='unique';
   $('cm-name-example').textContent=P.outputName({index:0,name:m?.name||'ролик.mp4',target:unique?1:(s.formats[0]||'9:16'),mode:s.mode,image:unique&&isImage(m),tag:s.nameTag});}
  function updateMode(){const unique=workspace.settings.mode==='unique';
   document.querySelectorAll('[data-cm-mode]').forEach(b=>{const active=b.dataset.cmMode===workspace.settings.mode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('cm-copy-control').hidden=!unique;$('cm-clean-settings').hidden=unique;$('cm-tailmix-row').hidden=unique;$('cm-unique-settings').hidden=!unique;$('cm-library').hidden=false;$('cm-preview-format').closest('label').hidden=unique;
-  $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();
+  if($('cm-scale-box'))$('cm-scale-box').hidden=unique;
+  $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();
   const ind=$('cm-mode-indicator');if(ind)ind.textContent=unique?'Стили и копии':'Форматы и слои';
   for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=unique;
   $('creo-view').dataset.cmMode=workspace.settings.mode;renderFiles();updateStage();updateNameExample();updateEstimate();
@@ -464,7 +470,7 @@
   const sel=selectedMedia();$('cm-input-count').hidden=!sel.length;$('cm-input-count').textContent=sel.length+' выбрано';
   const reason=runBlockers(p);$('cm-run').hidden=busy;$('cm-queue').hidden=!busy;$('cm-run').textContent=s.mode==='unique'?'Создать варианты':'Создать видео';
   if((s.mode==='unique'||p.formats.length)&&$('cm-status').textContent==='Нужен хотя бы один формат.')status('');
-  $('cm-run').disabled=$('cm-queue').disabled=!!reason;$('cm-plan-open').disabled=!sel.length;
+  $('cm-run').disabled=$('cm-queue').disabled=!!reason;if($('cm-plan-open'))$('cm-plan-open').disabled=!sel.length;
   $('cm-run-reason').textContent=reason&&available&&!importTask&&!sel.length?'Сначала добавьте и выберите файлы.':reason||(queued?'В очереди: '+queued:'');
   $('cm-run-reason').classList.toggle('is-blocked',!!reason&&!!sel.length);
   updateNameExample();updateTailFields();presetState();updatePlanIfOpen(p);}
@@ -632,6 +638,12 @@
  });
  for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
   on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
+ on('cm-scale-box','click',e=>{
+  const b=e.target.closest('[data-scale]');if(!b)return;
+  const s=b.dataset.scale;if(!s||workspace.settings.scale===s)return;
+  checkpoint('заполнение кадра','scale');workspace.settings.scale=s;
+  syncScaleUI();save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();
+ });
  on('cm-name-tag','change',e=>{const tag=P.safeTag(e.target.value);checkpoint('метка имени');workspace.settings.nameTag=tag;e.target.value=tag;save();updateEstimate();});
  on('cm-name-tag','input',e=>{$('cm-name-example').textContent=P.outputName({index:0,name:(selectedMedia()[0]||current)?.name||'ролик.mp4',target:workspace.settings.mode==='unique'?1:workspace.settings.formats[0],mode:workspace.settings.mode,image:workspace.settings.mode==='unique'&&isImage(selectedMedia()[0]||current),tag:e.target.value});});
  on('cm-goto-library','click',()=>{const l=$('cm-library');l.open=true;l.scrollIntoView({block:'start'});l.querySelector('summary').focus({preventScroll:true});});
@@ -778,8 +790,8 @@
  // Presets
  on('cm-user-preset','change',e=>{workspace.activePreset=e.target.value||undefined;save();renderPresets();});
  on('cm-preset-apply','click',applyUserPreset);on('cm-preset-save','click',()=>openPresetForm('create'));on('cm-preset-rename','click',()=>openPresetForm('rename'));
- on('cm-preset-form','submit',e=>{e.preventDefault();return submitPresetForm();});on('cm-preset-cancel','click',()=>{closePresetForm();$('cm-preset-save').focus();});
- $('cm-preset-form').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closePresetForm();$('cm-preset-save').focus();}});
+ on('cm-preset-form','submit',e=>{e.preventDefault();return submitPresetForm();});on('cm-preset-cancel','click',()=>{closePresetForm();$('cm-preset-save')?.focus();});
+ $('cm-preset-form').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closePresetForm();$('cm-preset-save')?.focus();}});
  on('cm-preset-update','click',async()=>{const p=workspace.userPresets.find(x=>x.id===workspace.activePreset);if(!p)return;if(!await askConfirm('Перезаписать пресет «'+p.name+'»?','Текущие параметры обработки заменят сохранённые'+(p.library?' вместе с выбранными хвостами и музыкой':'')+'.','Перезаписать'))return;
   workspace.userPresets=P.updatePreset(workspace.userPresets,p.id,workspace.settings,p.library?layers():undefined);renderPresets();try{await persist();status('Пресет «'+p.name+'» обновлён.');}catch(e){status('Пресет обновлён, но не сохранён на устройстве: '+e.message,true);}});
  on('cm-preset-delete','click',async()=>{const p=workspace.userPresets.find(x=>x.id===workspace.activePreset);if(!p)return;if(!await askConfirm('Удалить пресет «'+p.name+'»?','Текущие настройки и прошлые результаты не изменятся.','Удалить',true))return;

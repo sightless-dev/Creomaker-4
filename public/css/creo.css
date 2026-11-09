@@ -1242,6 +1242,84 @@
 .cm-zone-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
 .cm-zone-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
 
+/* ---------- Scale control (Заполнение кадра) ---------- */
+.cm-scale-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+.cm-scale-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cm-scale-header .cm-setting-label {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-scale-header .cm-setting-label [data-icon] {
+  color: var(--accent);
+}
+
+.cm-scale-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  background: var(--surface-2);
+  padding: 4px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid var(--border);
+}
+
+.cm-scale-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 4px 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm, 7px);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.16s var(--ease-out);
+}
+
+.cm-scale-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.cm-scale-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 650;
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14), 0 0 0 1px var(--accent);
+}
+
+.cm-scale-btn.active .cm-scale-icon {
+  color: var(--accent);
+}
+
+.cm-scale-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: currentColor;
+}
+
 /* ---------- 3. Output: Formats, Visual Style Presets, Launch ---------- */
 .cm-presets {
   display: grid;

@@ -188,15 +188,41 @@
       <span class="cm-setting-label"><span data-icon="music"></span><span><strong>Наложить фоновое аудио</strong><small class="cm-row-sub" id="cm-music-mix-sub">Только аудио поверх ролика, без видеохвостов</small></span></span>
       <input id="cm-music-mix" type="checkbox" checked>
      </label>
-     <div class="cm-layers-line">
-      <p id="cm-layers-summary" class="hint"></p>
-      <button type="button" id="cm-goto-library" class="button small quiet"><span data-icon="music"></span>Настроить</button>
+    </div>
+    <div class="cm-scale-box" id="cm-scale-box">
+     <div class="cm-scale-header">
+      <span class="cm-setting-label"><span data-icon="crop"></span><span><strong>Заполнение кадра</strong></span></span>
      </div>
+     <div class="cm-scale-group" role="radiogroup" aria-label="Заполнение кадра">
+      <button type="button" class="cm-scale-btn active" data-scale="crop" role="radio" aria-checked="true" title="Обрезать края под формат (Crop)">
+       <svg class="cm-scale-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2" opacity="0.4"/>
+        <rect x="6" y="2" width="12" height="20" rx="2" stroke="currentColor" stroke-width="2" fill="currentColor" fill-opacity="0.15"/>
+       </svg>
+       <span>Обрезать</span>
+      </button>
+      <button type="button" class="cm-scale-btn" data-scale="letterbox" role="radio" aria-checked="false" title="Вписать целиком с полями (Letterbox)">
+       <svg class="cm-scale-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="3" y="3" width="18" height="4" fill="currentColor" opacity="0.55"/>
+        <rect x="3" y="17" width="18" height="4" fill="currentColor" opacity="0.55"/>
+        <rect x="6" y="7" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.15"/>
+       </svg>
+       <span>Поля</span>
+      </button>
+      <button type="button" class="cm-scale-btn" data-scale="stretch" role="radio" aria-checked="false" title="Растянуть под пропорции кадра (Stretch)">
+       <svg class="cm-scale-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" fill="currentColor" fill-opacity="0.1"/>
+        <path d="M7 12h10M7 12l2.5-2.5M7 12l2.5 2.5M17 12l-2.5-2.5M17 12l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+       </svg>
+       <span>Растянуть</span>
+      </button>
+     </div>
+     <input type="hidden" id="cm-scale" value="crop">
     </div>
     <section class="cm-presets" id="cm-preset-options" aria-labelledby="cm-presets-title">
      <div class="cm-presets-header">
       <h3 id="cm-presets-title"><span data-icon="archive"></span>Пресеты</h3>
-      <button type="button" id="cm-preset-save" class="button small quiet"><span data-icon="save"></span>Сохранить пресет</button>
      </div>
      <div id="cm-style-presets" class="cm-style-presets" role="group" aria-label="Готовые пресеты" hidden></div>
      <p id="cm-profile-description" class="hint" aria-live="polite" hidden></p>
@@ -216,7 +242,6 @@
     <div class="cm-launch-summary"><strong id="cm-estimate"></strong><span id="cm-plan-line" class="hint"></span></div>
     <div id="cm-launch-progress" class="cm-launch-progress" hidden><progress id="cm-active-progress" max="100" value="0" aria-label="Ход текущей задачи"></progress><span id="cm-active-label" class="hint"></span></div>
     <div class="cm-launch-actions">
-     <button type="button" id="cm-plan-open" class="button quiet" title="Проверить список выходных файлов перед запуском"><span data-icon="list"></span>План</button>
      <button type="button" id="cm-run" class="button primary" aria-describedby="cm-run-reason" disabled>Создать видео</button>
      <button type="button" id="cm-queue" class="button primary" aria-describedby="cm-run-reason" hidden>В очередь</button>
      <button type="button" id="cm-cancel" class="button quiet" disabled>Остановить</button>
@@ -226,7 +251,6 @@
    </div>
    <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки (меню)</summary><div class="cm-advanced-body">
     <details class="cm-disclosure cm-fold" id="cm-clean-extra"><summary><span data-icon="expand"></span>Кадр и длительность хвостов</summary>
-     <label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="expand"></span><span>Заполнение кадра</span></span><select id="cm-scale"><option value="crop">Обрезать по краям · Crop</option><option value="letterbox">Вписать с полями · Letterbox</option><option value="stretch">Растянуть · Stretch</option></select></label>
      <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="grain"></span><span>Лёгкий шум</span></span><input id="cm-noise" type="checkbox" checked></label>
      <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="900" value="420"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>
     </details>
