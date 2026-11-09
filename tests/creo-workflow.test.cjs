@@ -46,6 +46,8 @@ test('copying an edit is independent per file, clamps to each duration and prese
  const zonesOnly=P.copyEdit(from,20,{trim:false,zones:true},existing);assert.deepEqual([zonesOnly.start,zonesOnly.end,zonesOnly.time],[.5,1,.7]);assert.equal(zonesOnly.zones.length,1);assert.equal(zonesOnly.zones[0].x,.1);
  assert.equal(existing.zones[0].x,.5,'target edit object is not mutated');
  const trimOnly=P.copyEdit(from,20,{trim:true,zones:false},existing);assert.deepEqual(trimOnly.zones,existing.zones);assert.equal(trimOnly.strength,10);
+ const floatDur=P.copyEdit({start:1.2345,end:105.0012},105.0012,{trim:true,zones:false},{start:0,end:10,strength:18,zones:[],time:105.0012});
+ assert.equal(floatDur.start,1.23);assert.equal(floatDur.end,105);assert.equal(floatDur.time,105);
 });
 
 test('user presets: create, duplicate-name rejection, rename, update, apply, delete',()=>{

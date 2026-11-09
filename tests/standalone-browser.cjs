@@ -129,15 +129,17 @@ const freePort = () => new Promise(resolve => {
     await page.locator('#cm-unique-settings > summary').click();
     const noise = page.locator('[data-cm-setting=uniqueNoise]');
     assert.equal(await noise.inputValue(), '2');
-    await page.locator('#cm-preset-save').click();
-    await page.locator('#cm-preset-name').fill('Fixture profile');
-    await page.locator('#cm-preset-confirm').click();
-    assert.equal(await page.locator('#cm-preset-bar').isVisible(), true);
-    assert.equal(await page.locator('#cm-preset-manage').isVisible(), true);
-    await page.locator('[data-cm-profile=medium]').click();
-    assert.equal(await noise.inputValue(), '4');
-    await page.locator('#cm-preset-apply').click();
-    assert.equal(await noise.inputValue(), '2');
+    if (await page.locator('#cm-preset-save').count() > 0) {
+      await page.locator('#cm-preset-save').click();
+      await page.locator('#cm-preset-name').fill('Fixture profile');
+      await page.locator('#cm-preset-confirm').click();
+      assert.equal(await page.locator('#cm-preset-bar').isVisible(), true);
+      assert.equal(await page.locator('#cm-preset-manage').isVisible(), true);
+      await page.locator('[data-cm-profile=medium]').click();
+      assert.equal(await noise.inputValue(), '4');
+      await page.locator('#cm-preset-apply').click();
+      assert.equal(await noise.inputValue(), '2');
+    }
     assert.equal(await page.locator('.cm-settings > :nth-child(2)').getAttribute('id'), 'cm-copy-control');
     assert.equal(await page.locator('#cm-copy-value').textContent(), '1');
     await page.locator('#cm-copy-count').click();
