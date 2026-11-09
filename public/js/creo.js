@@ -19,7 +19,63 @@
  const timelineCache=new Map(),sourceCache=new Map(),refs=new Map(),history=P.createHistory(60);let lastCheckpoint={key:'',time:0};
 
  /* ---------- Basics ---------- */
- const status=(text,error=false)=>{$('cm-status').textContent=text;$('cm-status').classList.toggle('error',error);};
+ let activeToast = null;
+ function showToast(text, error = false) {
+  const container = $('cm-toasts');
+  if (!container || !text || !text.trim()) return;
+  const isProgress = text.startsWith('Копирование') || text.startsWith('Сохраняем') || text.startsWith('Обновляем') || text.startsWith('Скачиваем');
+  if (activeToast && activeToast.isConnected && !activeToast.classList.contains('is-leaving')) {
+   const isSameKind = (activeToast.classList.contains('is-error') === !!error);
+   const prevText = activeToast.querySelector('.cm-toast-body')?.textContent || '';
+   if (prevText === text || (isProgress && isSameKind)) {
+    const body = activeToast.querySelector('.cm-toast-body');
+    if (body) body.textContent = text;
+    activeToast.restartTimer?.(error ? 6500 : 4500);
+    return;
+   }
+  }
+  while (container.children.length >= 3) {
+   container.firstElementChild?.remove();
+  }
+  const toast = document.createElement('div');
+  toast.className = 'cm-toast ' + (error ? 'is-error' : 'is-info');
+  toast.setAttribute('role', error ? 'alert' : 'status');
+  toast.innerHTML = '<span class="cm-toast-icon" aria-hidden="true">' + icon(error ? 'alert' : 'info') + '</span><div class="cm-toast-body">' + esc(text) + '</div><button type="button" class="cm-toast-close" aria-label="Закрыть">' + icon('close') + '</button>';
+  let timer = null;
+  const dismiss = () => {
+   if (toast.classList.contains('is-leaving')) return;
+   toast.classList.add('is-leaving');
+   clearTimeout(timer);
+   setTimeout(() => {
+    toast.remove();
+    if (activeToast === toast) activeToast = null;
+   }, 220);
+  };
+  const startTimer = (ms) => {
+   clearTimeout(timer);
+   timer = setTimeout(dismiss, ms);
+  };
+  toast.restartTimer = startTimer;
+  toast.querySelector('.cm-toast-close')?.addEventListener('click', (e) => {
+   e.stopPropagation();
+   dismiss();
+  });
+  toast.addEventListener('mouseenter', () => clearTimeout(timer));
+  toast.addEventListener('mouseleave', () => startTimer(2500));
+  startTimer(error ? 6500 : 4500);
+  container.appendChild(toast);
+  activeToast = toast;
+ }
+ const status = (text, error = false) => {
+  const el = $('cm-status');
+  if (el) {
+   el.textContent = text;
+   el.classList.toggle('error', error);
+  }
+  if (text && text.trim()) {
+   showToast(text, error);
+  }
+ };
  const on=(id,event,fn)=>{const el=$(id);if(!el)return;el.addEventListener(event,e=>{try{Promise.resolve(fn(e)).catch(err=>status(err.message,true));}catch(err){status(err.message,true);}});};
  async function api(route,{method='GET',data,body,signal,query=''}={}){
   const res=await fetch('/api/creo/'+route+query,{method,headers:{'X-Creo-Token':token,...(data?{'Content-Type':'application/json'}:{})},body:data?JSON.stringify(data):body,signal});

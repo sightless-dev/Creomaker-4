@@ -57,7 +57,7 @@
   </div>
  </header>
 
- <p id="cm-status" class="cm-status" role="status" aria-live="polite"></p>
+ <span id="cm-status" class="sr-only" role="status" aria-live="polite"></span>
 
  <div class="cm-workbench">
   <aside class="panel cm-sources" id="cm-drop" aria-labelledby="cm-sources-title">
@@ -72,7 +72,6 @@
     <span class="cm-drop-icon" data-icon="upload" aria-hidden="true"></span>
     <div class="cm-drop-text">
      <strong>Перетащите файлы сюда</strong>
-     <small class="cm-drop-formats">Видео (MP4, MOV, WEBM) и фото (JPG, PNG, WEBP)</small>
     </div>
     <div class="button-row">
      <button type="button" id="cm-add-inputs" class="button"><span data-icon="plus"></span>Добавить файлы</button>
@@ -106,7 +105,6 @@
     <div class="cm-empty-copy">
      <span data-icon="film" aria-hidden="true" class="cm-empty-badge-icon"></span>
      <strong>Добавьте файл для предпросмотра</strong>
-     <p class="hint">Выберите ролик слева, чтобы увидеть сравнение «До / После», обрезать края и выделить мышью зоны размытия.</p>
      <div class="cm-empty-Action">
       <button type="button" id="cm-empty-pick" class="button small primary"><span data-icon="plus"></span>Выбрать файлы с ПК</button>
      </div>
@@ -363,6 +361,7 @@
    <button type="button" id="cm-dir-cancel-btn" class="button quiet">Отмена</button>
   </div>
  </dialog>
- <footer class="cm-footer"><span class="hint">Локальная студия CreoMaker · все вычисления выполняются на вашем устройстве · <a href="/macos-guide.html" target="_blank" class="cm-text-button">Инструкция для macOS</a></span><span class="cm-footer-right"><span id="cm-root-path" class="cm-path" title="Папка сохранения результатов"></span><button type="button" id="cm-footer-change-dir" class="cm-text-button" title="Изменить папку вывода">Сменить</button></span></footer>
+ <footer class="cm-footer"><span class="hint">Локальная студия CreoMaker</span><span class="cm-footer-right"><span id="cm-root-path" class="cm-path" title="Папка сохранения результатов"></span><button type="button" id="cm-footer-change-dir" class="cm-text-button" title="Изменить папку вывода">Сменить</button></span></footer>
+ <div id="cm-toasts" class="cm-toast-container" aria-live="polite" aria-atomic="true"></div>
  <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
 </section></main></body></html>

@@ -230,25 +230,125 @@
   white-space: nowrap;
 }
 
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 .cm-status {
-  font-size: 12.5px;
-  margin: 0 0 var(--s3);
-  padding: 8px 12px;
-  border-radius: var(--r-sm);
+  display: none !important;
+}
+
+/* ---------- Bottom-left toast notifications ---------- */
+.cm-toast-container {
+  position: fixed;
+  bottom: 22px;
+  left: 22px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  max-width: 440px;
+  width: calc(100vw - 44px);
+  pointer-events: none;
+}
+
+.cm-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text);
-  overflow-wrap: anywhere;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: cm-toast-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.cm-status:empty {
-  display: none;
+.cm-toast.is-leaving {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  pointer-events: none;
 }
 
-.cm-status.error {
+.cm-toast.is-error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface-2));
+}
+
+.cm-toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.cm-toast-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cm-toast.is-error .cm-toast-icon {
   color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.cm-toast-body {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cm-toast-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.cm-toast-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cm-toast-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes cm-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* ---------- Segmented controls ---------- */
