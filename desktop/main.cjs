@@ -24,7 +24,11 @@ const isMac = process.platform === 'darwin';
 
 // Keep desktop data separate from the browser build (which uses "CreoMaker" on macOS).
 app.setName('CreoMaker');
-app.setPath('userData', path.join(app.getPath('appData'), 'CreoMaker Desktop'));
+if (SELFTEST_DIR) {
+  app.setPath('userData', path.join(require('node:os').tmpdir(), 'creomaker-selftest-' + process.pid));
+} else {
+  app.setPath('userData', path.join(app.getPath('appData'), 'CreoMaker Desktop'));
+}
 
 let mainWindow = null;
 let server = null;
@@ -322,7 +326,7 @@ async function boot() {
   }
 }
 
-if (!app.requestSingleInstanceLock()) {
+if (!SELFTEST_DIR && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
