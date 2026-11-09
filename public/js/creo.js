@@ -138,6 +138,8 @@
   if($('cm-scale'))$('cm-scale').value=s;
  }
  function configurePlatform(){
+  const isMac=platform==='darwin'||/macintosh|mac os x/i.test(navigator.userAgent);
+  document.documentElement.classList.toggle('is-mac',isMac);
   const windows=platform==='win32',select=$('cm-acceleration');
   for(const option of select.options){option.hidden=!windows&&option.value!=='cpu';option.disabled=option.hidden;}
   $('cm-detect-gpu').hidden=!windows;

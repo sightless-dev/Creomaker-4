@@ -28,6 +28,8 @@
     }
   };
   document.addEventListener('DOMContentLoaded', async () => {
+    const isMac = /macintosh|mac os x/i.test(navigator.userAgent) || Boolean(navigator.platform?.includes('Mac'));
+    if (isMac) document.documentElement.classList.add('is-mac');
     for (const element of document.querySelectorAll('[data-icon]')) element.innerHTML = UIIcons.icon(element.dataset.icon);
     const theme = document.getElementById('theme-toggle');
     const savedTheme = await CreoWorkspaceStore.getSetting('theme').catch(() => null);

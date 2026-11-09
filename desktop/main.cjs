@@ -10,7 +10,7 @@
  *     library are shipped inside the app resources;
  *   - the window simply shows http://127.0.0.1:<port>, so UI and behaviour stay identical.
  */
-const { app, BrowserWindow, Menu, shell, utilityProcess, dialog, nativeTheme, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, utilityProcess, dialog, nativeTheme, ipcMain, screen } = require('electron');
 const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
@@ -252,11 +252,19 @@ function registerIPC() {
 
 function createWindow() {
   registerIPC();
+  let winW = 1380, winH = 820;
+  try {
+    const primary = screen?.getPrimaryDisplay?.();
+    if (primary?.workAreaSize) {
+      winW = Math.min(1380, Math.max(1024, primary.workAreaSize.width - 40));
+      winH = Math.min(840, Math.max(660, primary.workAreaSize.height - 40));
+    }
+  } catch {}
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: winW,
+    height: winH,
     minWidth: 1024,
-    minHeight: 680,
+    minHeight: 640,
     show: false,
     title: 'CreoMaker Studio',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#07090e' : '#e9edf6',
