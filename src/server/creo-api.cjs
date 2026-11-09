@@ -6,7 +6,33 @@ const {bundledLibrary}=require('./creo-library.cjs');
 const Updater=require('./creo-updater.cjs');
 const AssetsManager=require('./creo-assets-manager.cjs');
 const mime={'.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.aac':'audio/aac','.ogg':'audio/ogg','.flac':'audio/flac','.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.bmp':'image/bmp','.tiff':'image/tiff'};
-const validId=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
+const validId=v=>typeof v==='string'&&/^[\p{L}\p{N}._-]{1,140}$/u.test(v)&&!v.includes('..')&&path.basename(v)===v;
+function generateJobFolder({createdAt=new Date(),mode='clean',inputs=[],tag='',preset=''}){
+  const d=createdAt instanceof Date?createdAt:new Date(createdAt);
+  const pad=n=>String(n).padStart(2,'0');
+  const timestamp=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+'-'+pad(d.getMinutes())+'-'+pad(d.getSeconds());
+  const modeStr=mode==='clean'?'Clean3':'Уникализация';
+  const parts=[timestamp,modeStr];
+  if(inputs.length>0){
+    const first=inputs[0];
+    const firstName=typeof first==='string'?first:(first?.name||'');
+    let base=Profiles.safeBase(firstName).replace(/_+/g,'_').replace(/^_|_$/g,'');
+    if(base&&base!=='media'){
+      const countSuffix=inputs.length>1?'_ещё'+(inputs.length-1):'';
+      parts.push(base+countSuffix);
+    }else if(inputs.length>1){
+      parts.push(inputs.length+'файлов');
+    }
+  }
+  if(tag){
+    const t=Profiles.safeTag(tag);
+    if(t)parts.push(t);
+  }else if(preset){
+    const p=Profiles.safeTag(preset);
+    if(p)parts.push(p);
+  }
+  return parts.join('_').slice(0,110);
+}
 function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(root,'assets'),onUpdated}={}){
  const dir=dataDir||path.join(root,'data','creomaker'),uploads=path.join(dir,'uploads'),defaultResults=path.join(dir,'results'),previews=path.join(dir,'previews');
  const configFile=path.join(dir,'config.json');
@@ -44,7 +70,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
      if(!ent.isDirectory()||!validId(ent.name))continue;
      try{
       const j=JSON.parse(await fsp.readFile(path.join(d,ent.name,'job.json'),'utf8'));
-      if(j.id!==ent.name||jobs.has(j.id))continue;
+      if(!j.id||jobs.has(j.id))continue;
       j.outputDir=path.join(d,ent.name);
       if(['running','queued'].includes(j.status)){
        j.status='interrupted';j.label='Сервер был остановлен. Готовые файлы сохранены.';
@@ -181,9 +207,15 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     for(const key of ['tails','music','tailMusic']){if(!Array.isArray(request[key])||request[key].length>100)throw Error('В группе должно быть не более 100 файлов.');request[key].forEach(v=>{if(resolveMedia(key==='tails'?v:v.id).kind!==key)throw Error('Неверная группа медиа.');});}
     if(request.settings.mode==='clean'&&request.settings.tailmix&&!request.tails.length)throw Error('Хвосты включены, но не выбраны. Выберите хвосты или выключите их.');
     if(request.presetName!=null&&(typeof request.presetName!=='string'||request.presetName.length>60))throw Error('Неверное название пресета.');
-    const s=request.settings,id=crypto.randomUUID();
+    const s=request.settings,resolvedInputs=request.inputs.map(i=>resolveMedia(i));
+    const baseId=generateJobFolder({createdAt:new Date(),mode:s.mode,inputs:resolvedInputs,tag:s.nameTag,preset:request.presetName});
+    let id=baseId,suffix=1;
+    while(jobs.has(id)||fs.existsSync(path.join(results,id))||fs.existsSync(path.join(defaultResults,id))){
+      suffix++;
+      id=`${baseId}_${suffix}`;
+    }
     const job={id,status:'running',progress:0,label:'Подготовка',logs:[],outputs:[],createdAt:new Date().toISOString(),mode:s.mode,total:request.inputs.length*(s.mode==='clean'?s.formats.length:s.copies),
-     sources:request.inputs.map(i=>({id:i,name:resolveMedia(i).name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
+     sources:resolvedInputs.map(m=>({id:m.id,name:m.name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
     const folder=path.join(results,id);job.outputDir=folder;await fsp.mkdir(folder,{recursive:true});await fsp.writeFile(path.join(folder,'request.json'),JSON.stringify(request,null,2));jobs.set(id,job);
     if(active||(wantsQueue&&starting)){job.status='queued';job.label='В очереди';queue.push({job,request,folder});await persistJob(job);broadcast(job);json(res,202,publicJob(job));return true;}
     await persistJob(job);startJob(job,request,folder);json(res,202,publicJob(job));return true;}finally{if(!wantsQueue)starting=false;drain();}
@@ -226,7 +258,9 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     const r=await body(req),job=jobs.get(r.id);
     if(!job)throw Error('Задача не найдена.');
     const folder=path.resolve(job.outputDir||path.join(results,job.id));
-    if(path.basename(folder)!==job.id)throw Error('Неверный путь результата.');
+    const rel=path.relative(results,folder),relDef=path.relative(defaultResults,folder);
+    const isInside=(!rel.startsWith('..')&&!path.isAbsolute(rel))||(!relDef.startsWith('..')&&!path.isAbsolute(relDef));
+    if(!isInside&&path.basename(folder)!==job.id)throw Error('Неверный путь результата.');
     try{await fsp.access(folder);}catch{throw Error('Папка задачи не найдена на диске. Возможно, она была перемещена или удалена.');}
     const command={win32:'explorer.exe',darwin:'/usr/bin/open'}[process.platform]||'xdg-open';
     await new Promise((resolve,reject)=>{

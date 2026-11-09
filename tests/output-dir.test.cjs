@@ -125,3 +125,78 @@ test('output directory: default detection, custom setting and reset', async () =
     await fsp.rm(tmpRoot, { recursive: true, force: true });
   }
 });
+
+test('job output folder: human-readable name format with date, mode and source', async () => {
+  const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'creo-job-folder-test-'));
+  try {
+    const api = createCreoAPI(tmpRoot, { dataDir: path.join(tmpRoot, 'data') });
+    await api.ready;
+
+    async function request(method, pathname, bodyData = null) {
+      const url = new URL('http://127.0.0.1' + pathname);
+      let resBody = '', statusCode = 200;
+      const req = {
+        method,
+        headers: { host: '127.0.0.1', origin: 'http://127.0.0.1', 'x-creo-token': 'test-token' },
+        [Symbol.asyncIterator]: async function* () { if (bodyData) yield Buffer.from(JSON.stringify(bodyData)); }
+      };
+      const res = {
+        writeHead(code) { statusCode = code; },
+        end(data) { if (data) resBody += data; },
+        write(data) { if (data) resBody += data; }
+      };
+      const sessionUrl = new URL('http://127.0.0.1/api/creo/session');
+      let token = '';
+      await api.handle({ method: 'GET', headers: { host: '127.0.0.1', origin: 'http://127.0.0.1' } }, {
+        writeHead() {}, end(d) { token = JSON.parse(d).token; }
+      }, sessionUrl);
+      req.headers['x-creo-token'] = token;
+      await api.handle(req, res, url);
+      return { status: statusCode, json: resBody ? JSON.parse(resBody) : null };
+    }
+
+    const uploadsDir = path.join(tmpRoot, 'data', 'uploads');
+    await fsp.mkdir(uploadsDir, { recursive: true });
+    await fsp.writeFile(path.join(uploadsDir, 'PL_PAR_006.mp4'), 'fake video');
+    const lib = [{ id: 'mock1', name: 'PL_PAR_006.mp4', kind: 'inputs', path: 'PL_PAR_006.mp4', size: 10 }];
+    await fsp.writeFile(path.join(tmpRoot, 'data', 'library.json'), JSON.stringify(lib));
+
+    // Recreate API to read saved library
+    api.close();
+    const api2 = createCreoAPI(tmpRoot, { dataDir: path.join(tmpRoot, 'data') });
+    await api2.ready;
+
+    // Helper with api2
+    async function request2(method, pathname, bodyData = null) {
+      const url = new URL('http://127.0.0.1' + pathname);
+      let resBody = '', statusCode = 200;
+      const req = {
+        method,
+        headers: { host: '127.0.0.1', origin: 'http://127.0.0.1' },
+        [Symbol.asyncIterator]: async function* () { if (bodyData) yield Buffer.from(JSON.stringify(bodyData)); }
+      };
+      const res = { writeHead(code) { statusCode = code; }, end(d) { if (d) resBody += d; } };
+      let token = '';
+      await api2.handle({ method: 'GET', headers: { host: '127.0.0.1', origin: 'http://127.0.0.1' } }, { writeHead() {}, end(d) { token = JSON.parse(d).token; } }, new URL('http://127.0.0.1/api/creo/session'));
+      req.headers['x-creo-token'] = token;
+      await api2.handle(req, res, url);
+      return { status: statusCode, json: resBody ? JSON.parse(resBody) : null };
+    }
+
+    const jobRes = await request2('POST', '/api/creo/jobs?queue=1', {
+      inputs: ['mock1'],
+      settings: { mode: 'clean', formats: ['9:16'], copies: 1, tailmix: false },
+      tails: [], music: [], tailMusic: []
+    });
+
+    assert.equal(jobRes.status, 202);
+    assert.ok(jobRes.json.id);
+    assert.doesNotMatch(jobRes.json.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'should not be a raw UUID');
+    assert.match(jobRes.json.id, /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_Clean3_PL_PAR_006/, 'readable format');
+    assert.ok(fs.existsSync(jobRes.json.outputDir), 'output folder exists on disk');
+
+    api2.close();
+  } finally {
+    await fsp.rm(tmpRoot, { recursive: true, force: true });
+  }
+});
