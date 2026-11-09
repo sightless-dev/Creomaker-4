@@ -12,7 +12,7 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:26, preset:'faster', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:420, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:26, preset:'faster', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');

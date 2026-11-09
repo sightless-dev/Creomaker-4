@@ -6,7 +6,7 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:26,preset:'faster',threads:0,noise:true,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:420,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15};
+ const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:26,preset:'faster',threads:0,noise:true,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
@@ -137,6 +137,18 @@
   document.querySelectorAll('[data-scale]').forEach(b=>{const active=b.dataset.scale===s;b.classList.toggle('active',active);b.setAttribute('aria-checked',String(active));});
   if($('cm-scale'))$('cm-scale').value=s;
  }
+ function syncTailPills(){
+  const sec=workspace.settings.tailSeconds||60;
+  document.querySelectorAll('[data-quick-tail]').forEach(b=>{
+   const active=Number(b.dataset.quickTail)===sec;
+   b.classList.toggle('active',active);
+   b.setAttribute('aria-pressed',String(active));
+  });
+  if($('cm-tail-duration-val')){
+   const mins=sec/60;
+   $('cm-tail-duration-val').textContent=sec%60===0?mins+' мин':sec+' с';
+  }
+ }
  function configurePlatform(){
   const isMac=platform==='darwin'||/macintosh|mac os x/i.test(navigator.userAgent);
   document.documentElement.classList.toggle('is-mac',isMac);
@@ -177,6 +189,8 @@
   document.querySelectorAll('[data-cm-profile]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.cmProfile===p?.id)));}
  function updateTailFields(){const s=workspace.settings,unique=s.mode==='unique',off=unique||!s.tailmix,musicOn=s.musicMix!==false;
   for(const id of ['cm-tail-seconds','cm-fade'])$(id).disabled=off;$('cm-tail-fields').classList.toggle('is-off',off);
+  if($('cm-tail-duration-control'))$('cm-tail-duration-control').hidden=off;
+  syncTailPills();
   const sub=$('cm-music-mix-sub');if(sub)sub.textContent=off?'Только аудио поверх ролика, без видеохвостов':'Фоновая музыка поверх ролика и видеохвостов';
   const n=k=>workspace[k].length,seconds=s.tailSeconds;
   const length=seconds%60===0?seconds/60+' мин':seconds+' с';
@@ -191,7 +205,7 @@
   document.querySelectorAll('[data-cm-mode]').forEach(b=>{const active=b.dataset.cmMode===workspace.settings.mode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('cm-copy-control').hidden=!unique;$('cm-clean-settings').hidden=unique;$('cm-tailmix-row').hidden=unique;$('cm-unique-settings').hidden=!unique;$('cm-library').hidden=false;$('cm-preview-format').closest('label').hidden=unique;
   if($('cm-scale-box'))$('cm-scale-box').hidden=unique;
-  $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();
+  $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();syncTailPills();
   const ind=$('cm-mode-indicator');if(ind)ind.textContent=unique?'Стили и копии':'Форматы и слои';
   for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=unique;
   $('creo-view').dataset.cmMode=workspace.settings.mode;renderFiles();updateStage();updateNameExample();updateEstimate();
@@ -708,12 +722,19 @@
   if(e.target.dataset.format){const next=[...$('cm-formats').querySelectorAll('input:checked')].map(c=>c.dataset.format);if(!next.length){e.target.checked=true;status('Нужен хотя бы один формат.',true);return;}status('');checkpoint('форматы');workspace.settings.formats=next;save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();}
  });
  for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
-  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
+  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['tailmix','tailSeconds','fade'].includes(key)){updateTailFields();syncTailPills();}if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
  on('cm-scale-box','click',e=>{
   const b=e.target.closest('[data-scale]');if(!b)return;
   const s=b.dataset.scale;if(!s||workspace.settings.scale===s)return;
   checkpoint('заполнение кадра','scale');workspace.settings.scale=s;
   syncScaleUI();save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();
+ });
+ on('cm-tail-duration-control','click',e=>{
+  const b=e.target.closest('[data-quick-tail]');if(!b)return;
+  const sec=Number(b.dataset.quickTail);if(!sec||workspace.settings.tailSeconds===sec)return;
+  checkpoint('длительность хвостов','tailSeconds');workspace.settings.tailSeconds=sec;
+  if($('cm-tail-seconds'))$('cm-tail-seconds').value=sec;
+  syncTailPills();updateTailFields();save();updateEstimate();updateTrimUI();
  });
  on('cm-name-tag','change',e=>{const tag=P.safeTag(e.target.value);checkpoint('метка имени');workspace.settings.nameTag=tag;e.target.value=tag;save();updateEstimate();});
  on('cm-name-tag','input',e=>{$('cm-name-example').textContent=P.outputName({index:0,name:(selectedMedia()[0]||current)?.name||'ролик.mp4',target:workspace.settings.mode==='unique'?1:workspace.settings.formats[0],mode:workspace.settings.mode,image:workspace.settings.mode==='unique'&&isImage(selectedMedia()[0]||current),tag:e.target.value});});

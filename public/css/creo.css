@@ -1710,6 +1710,34 @@
   border-bottom: 0;
 }
 
+.cm-tail-duration-control {
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cm-tail-duration-control[hidden] {
+  display: none !important;
+}
+
+.cm-tail-duration-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.cm-tail-duration-header .hint {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.cm-tail-duration-header strong {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+}
+
 .cm-layers-line {
   display: flex;
   align-items: center;
