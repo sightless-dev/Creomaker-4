@@ -222,6 +222,8 @@ function buildMenu() {
     {
       label: 'Справка',
       submenu: [
+        { label: 'Инструкция для macOS', click: () => shell.openExternal(origin ? origin + '/macos-guide.html' : 'https://github.com/sightless-dev/Creomaker-4') },
+        { type: 'separator' },
         { label: 'Папка данных CreoMaker', click: () => shell.openPath(app.getPath('userData')) },
         { label: 'Репозиторий на GitHub', click: () => shell.openExternal('https://github.com/sightless-dev/Creomaker-4') }
       ]

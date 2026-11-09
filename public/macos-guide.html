@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Установка CreoMaker на macOS</title>
+  <meta name="description" content="Краткое руководство по установке десктопной версии CreoMaker на macOS и загрузке медиабиблиотеки.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e11d48'/><path d='M10 16a6 6 0 1 1 12 0 6 6 0 0 1-12 0z' fill='none' stroke='white' stroke-width='3'/></svg>">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090e;
+      --surface: #121622;
+      --surface-2: #181d2c;
+      --surface-hover: #1f2538;
+      --border: #23293d;
+      --border-accent: rgba(244, 63, 94, 0.35);
+      --text: #f1f5f9;
+      --text-muted: #8e9bb0;
+      --accent: #f43f5e;
+      --accent-hover: #fb7185;
+      --accent-glow: rgba(244, 63, 94, 0.18);
+      --code-bg: #0b0e15;
+      --green: #10b981;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.5;
+      padding: 32px 16px 64px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(244, 63, 94, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(56, 189, 248, 0.05) 0%, transparent 40%);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+
+    .logo-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #f43f5e, #be123c);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(244, 63, 94, 0.4);
+    }
+
+    .logo-badge svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: white;
+      stroke-width: 2.8;
+      stroke-linecap: round;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+      position: relative;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .step-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    /* Buttons */
+    .downloads-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 540px) {
+      .downloads-grid { grid-template-columns: 1fr; }
+    }
+
+    .dl-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.16s ease;
+    }
+
+    .dl-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .dl-btn.primary {
+      background: linear-gradient(180deg, rgba(244, 63, 94, 0.14) 0%, rgba(244, 63, 94, 0.04) 100%);
+      border-color: var(--border-accent);
+    }
+
+    .dl-btn-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .dl-btn-badge {
+      font-size: 11px;
+      background: var(--accent);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .dl-btn-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Drag Illustration */
+    .drag-box {
+      background: var(--surface-2);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .drag-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .drag-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .drag-arrow {
+      color: var(--accent);
+      font-size: 20px;
+    }
+
+    /* Code Snippet */
+    .code-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .code-text {
+      overflow-x: auto;
+      white-space: nowrap;
+      color: #38bdf8;
+    }
+
+    .copy-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.14s ease;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-accent);
+    }
+
+    .copy-btn.copied {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .tip-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .tip-box strong {
+      color: var(--text);
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 14px;
+    }
+
+    .back-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.14s ease;
+    }
+
+    .back-link:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/" class="brand">
+        <div class="logo-badge">
+          <svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        CreoMaker
+      </a>
+      <h1>Установка на macOS</h1>
+      <p class="subtitle">Быстрый запуск в 4 простых шага</p>
+    </header>
+
+    <!-- Шаг 1 -->
+    <div class="card">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">Скачайте установочный образ</div>
+      </div>
+      <p class="step-desc">Выберите файл под чип вашего Mac ( → «Об этом Mac»):</p>
+      <div class="downloads-grid">
+        <a href="https://github.com/sightless-dev/Creomaker-4/releases/download/desktop-latest/CreoMaker-1.1.0-macOS-arm64.dmg" class="dl-btn primary">
+          <div class="dl-btn-top">
+            <span>Apple Silicon</span>
+            <span class="dl-btn-badge">M1–M4</span>
+          </div>
+          <span class="dl-btn-sub">CreoMaker-arm64.dmg · 144 МБ</span>
+        </a>
+        <a href="https://github.com/sightless-dev/Creomaker-4/releases/download/desktop-latest/CreoMaker-1.1.0-macOS-x64.dmg" class="dl-btn">
+          <div class="dl-btn-top">
+            <span>Intel Mac</span>
+            <span class="dl-btn-sub">До 2020 г.</span>
+          </div>
+          <span class="dl-btn-sub">CreoMaker-x64.dmg · 162 МБ</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Шаг 2 -->
+    <div class="card">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">Перетащите в «Программы»</div>
+      </div>
+      <p class="step-desc">Дважды кликните по скачанному <code>.dmg</code> и перетащите иконку CreoMaker в папку Applications:</p>
+      <div class="drag-box">
+        <div class="drag-item">
+          <div class="drag-icon" style="background:#e11d48; box-shadow:0 4px 12px rgba(225,29,72,0.4);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>
+          </div>
+          <span>CreoMaker</span>
+        </div>
+        <div class="drag-arrow">→</div>
+        <div class="drag-item">
+          <div class="drag-icon" style="background:#2563eb; box-shadow:0 4px 12px rgba(37,99,235,0.4);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M3 7v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-7l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+          </div>
+          <span>Applications</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Шаг 3 -->
+    <div class="card">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div class="step-title">Первый запуск (обход Gatekeeper)</div>
+      </div>
+      <p class="step-desc">Так как приложение скачано не из App Store, откройте его через правый клик или выполните команду:</p>
+      
+      <div class="tip-box">
+        <strong>Способ 1:</strong> В папке «Программы» нажмите на CreoMaker <strong>правой кнопкой мыши</strong> (или зажав <code>Control</code>) → выберите <strong>«Открыть»</strong> → нажмите <strong>«Открыть»</strong>.
+      </div>
+
+      <div class="tip-box" style="margin-top:8px;">
+        <strong>Способ 2 (универсальный для любой версии macOS):</strong> Откройте <strong>Терминал</strong> и вставьте команду:
+        <div class="code-box">
+          <span class="code-text" id="cmd-text">xattr -cr /Applications/CreoMaker.app</span>
+          <button type="button" class="copy-btn" id="copy-btn" onclick="copyCmd()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span id="copy-label">Скопировать</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Шаг 4 -->
+    <div class="card">
+      <div class="step-header">
+        <div class="step-num">4</div>
+        <div class="step-title">Скачайте медиабиблиотеку в 1 клик</div>
+      </div>
+      <p class="step-desc">В открывшемся приложении найдите раздел <strong>«Библиотека хвостов и фоновой музыки»</strong> и нажмите:</p>
+      <div style="background:var(--surface-2); border:1px solid var(--border-accent); border-radius:10px; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <span style="font-size:13px; font-weight:500;">🎁 26 видеохвостов и 13 музыкальных треков (1.2 ГБ)</span>
+        <span style="background:var(--accent); color:white; font-size:12px; font-weight:600; padding:6px 12px; border-radius:6px; box-shadow:0 2px 10px var(--accent-glow);">
+          Скачать библиотеку (1.2 ГБ)
+        </span>
+      </div>
+      <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Медиафайлы установятся в память Mac автоматически и сохранятся при последующих обновлениях.</p>
+    </div>
+
+    <footer>
+      <a href="/" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Открыть веб-версию CreoMaker
+      </a>
+      <span style="color:var(--border);">·</span>
+      <a href="https://github.com/sightless-dev/Creomaker-4/releases/tag/desktop-latest" class="back-link" target="_blank" rel="noopener">
+        Релизы на GitHub
+      </a>
+    </footer>
+  </div>
+
+  <script>
+    function copyCmd() {
+      const text = document.getElementById('cmd-text').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-btn');
+        const label = document.getElementById('copy-label');
+        btn.classList.add('copied');
+        label.textContent = 'Скопировано!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          label.textContent = 'Скопировать';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
