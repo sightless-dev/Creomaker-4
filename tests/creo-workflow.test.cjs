@@ -16,6 +16,10 @@ test('engine config: nameTag is optional, sanitised and old saved settings stay 
  const legacy={...defaults};delete legacy.nameTag;assert.equal(config(legacy).nameTag,'');
  assert.equal(config({nameTag:'PT v2'}).nameTag,'PT_v2');
  assert.throws(()=>config({nameTag:'x'.repeat(65)}));assert.throws(()=>config({nameTag:5}));
+ assert.equal(config({acceleration:'apple'}).acceleration,'apple');
+ assert.equal(config({threads:0}).threads,0);
+ assert.equal(config({threads:16}).threads,16);
+ assert.equal(P.createPreset([],{name:'Test',settings:{acceleration:'apple'}}).settings.acceleration,'apple');
 });
 
 test('dry plan: mixed batch, counts, skipped images, names and blocking reasons',()=>{

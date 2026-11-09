@@ -12,19 +12,18 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:26, preset:'faster', threads:2, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:420, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:26, preset:'faster', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:420, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
-  if(!['auto','cpu','amd','nvidia','intel'].includes(s.acceleration))throw Error('Неверный режим ускорения.');
-  if(process.platform!=='win32')s.acceleration='cpu';
+  if(!['auto','cpu','amd','nvidia','intel','apple'].includes(s.acceleration))throw Error('Неверный режим ускорения.');
   if(s.country!==''&&!require('../shared/countries.js').codes.includes(s.country))throw Error('Неверная страна метаданных.');
   if(typeof s.nameTag!=='string'||s.nameTag.length>64)throw Error('Метка имени — до 32 символов.');s.nameTag=P.safeTag(s.nameTag);
   if(typeof s.metadataTitle!=='string'||s.metadataTitle.length>150||/[\x00-\x1f]/.test(s.metadataTitle))throw Error('Название метаданных — до 150 символов.'); if(!['clean','unique'].includes(s.mode))throw Error('Неизвестный режим.');
   if(!Array.isArray(s.formats)||!s.formats.length||s.formats.some(f=>!formats[f]))throw Error('Выберите форматы кадра.'); s.formats=[...new Set(s.formats)];
   if(s.previewFormat&&!formats[s.previewFormat])throw Error('Неверный формат предпросмотра.');
   if(!['crop','letterbox','stretch'].includes(s.scale)||!presets.includes(s.preset))throw Error('Неверный режим масштабирования или кодирования.');
-  for(const [key,min,max] of [['crf',0,51],['threads',1,8],['bitrate',10000,15000],['tailSeconds',1,900],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
+  for(const [key,min,max] of [['crf',0,51],['threads',0,32],['bitrate',10000,15000],['tailSeconds',1,900],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
   for(const [key,,min,max] of P.fields)s[key]=num(s[key],min,max,P.defaults[key]);
   for(const key of ['colorShift','pixelation','outputFps'])s[key]=Math.round(s[key]);
   if(s.outputFps&&s.outputFps<12)throw Error('Частота кадров: 0 или от 12 до 60.');
@@ -109,9 +108,12 @@ function variantFilter(settings, probe, seed) {
 }
 class Engine {
   constructor(root){this.texture=path.join(root,'src','server','assets','paper-texture.png');this.ffmpeg=toolPath(root,'ffmpeg');this.ffprobe=toolPath(root,'ffprobe');this.cache=new Map();}
-  run(tool,args,{signal,progress,duration=1,threads=2}={}) {return new Promise((resolve,reject)=>{
+  run(tool,args,{signal,progress,duration=1,threads=0}={}) {return new Promise((resolve,reject)=>{
     if(signal?.aborted)return reject(Error('Обработка остановлена.'));
-    const ff=tool==='ffmpeg';if(ff){args=args.flatMap((v,i)=>v==='-i'&&args[i-1]!=='lavfi'?['-protocol_whitelist','file,pipe','-i']:[v]);}else args=['-protocol_whitelist','file,pipe',...args];const all=ff?['-hide_banner','-nostdin','-loglevel','error','-threads',String(threads),'-filter_threads','1','-filter_complex_threads','1',...args.slice(0,-1),'-threads',String(threads),'-progress','pipe:1','-nostats',args.at(-1)]:args;
+    const ff=tool==='ffmpeg';if(ff){args=args.flatMap((v,i)=>v==='-i'&&args[i-1]!=='lavfi'?['-protocol_whitelist','file,pipe','-i']:[v]);}else args=['-protocol_whitelist','file,pipe',...args];
+    const th=Number(threads)||0;
+    const threadFlags=th>0?['-threads',String(th),'-filter_threads',String(th),'-filter_complex_threads',String(th)]:['-threads','0'];
+    const all=ff?['-hide_banner','-nostdin','-loglevel','error',...threadFlags,...args.slice(0,-1),'-threads',String(th),'-progress','pipe:1','-nostats',args.at(-1)]:args;
     const child=spawn(ff?this.ffmpeg:this.ffprobe,all,{windowsHide:true,shell:false,stdio:['ignore','pipe','pipe']});let output='',error='',line='';
     const abort=()=>child.kill();signal?.addEventListener('abort',abort,{once:true});
     child.stdout.on('data',b=>{if(!ff){output+=b;if(output.length>1000000)child.kill();return;}line+=b;const lines=line.split('\n');line=lines.pop();for(const l of lines){const m=/^out_time_us=(\d+)/.exec(l);if(m)progress?.(Math.min(.995,Number(m[1])/1000000/duration));}});
@@ -145,8 +147,40 @@ class Engine {
     return result;
   }
   quality(s){return s.bitrateEnabled?['-b:v',s.bitrate+'k','-maxrate',s.bitrate+'k','-bufsize',s.bitrate*2+'k']:['-crf',String(s.crf)];}
-  async hardware(){if(process.platform!=='win32')return {available:[],preferred:'libx264'};if(!this.hardwarePromise)this.hardwarePromise=(async()=>{const available=[];for(const encoder of ['h264_amf','h264_nvenc','h264_qsv']){try{await this.run('ffmpeg',['-y','-f','lavfi','-i','color=size=128x128:rate=30','-frames:v','2','-an','-c:v',encoder,'-f','null','-'],{signal:AbortSignal.timeout(12000)});available.push(encoder);}catch{}}return {available,preferred:available[0]||'libx264'};})();return this.hardwarePromise;}
-  codec(s){if(s.encoder&&s.encoder!=='libx264'){const q=s.bitrateEnabled?['-b:v',s.bitrate+'k','-maxrate',s.bitrate+'k','-bufsize',s.bitrate*2+'k']:s.encoder==='h264_amf'?['-rc','cqp','-qp_i',String(s.crf),'-qp_p',String(s.crf)]:s.encoder==='h264_nvenc'?['-rc','vbr','-cq',String(s.crf),'-b:v','0']:['-global_quality',String(s.crf)];return ['-c:v',s.encoder,...q,...(s.encoder==='h264_amf'?['-quality','balanced']:s.encoder==='h264_nvenc'?['-preset','p4']:['-preset','medium']),'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];}return ['-c:v','libx264',...this.quality(s),'-preset',s.preset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];}
+  async hardware(){
+    if(!this.hardwarePromise)this.hardwarePromise=(async()=>{
+      const available=[];
+      const candidates=process.platform==='darwin'?['h264_videotoolbox']:process.platform==='win32'?['h264_nvenc','h264_amf','h264_qsv']:['h264_nvenc','h264_vaapi','h264_qsv'];
+      for(const encoder of candidates){
+        try{
+          await this.run('ffmpeg',['-y','-f','lavfi','-i','color=size=128x128:rate=30','-frames:v','2','-an','-c:v',encoder,'-f','null','-'],{signal:AbortSignal.timeout(6000)});
+          available.push(encoder);
+        }catch{}
+      }
+      return {available,preferred:available[0]||'libx264'};
+    })();
+    return this.hardwarePromise;
+  }
+  codec(s){
+    if(s.encoder&&s.encoder!=='libx264'){
+      let q;
+      if(s.bitrateEnabled){
+        q=['-b:v',s.bitrate+'k','-maxrate',s.bitrate+'k','-bufsize',s.bitrate*2+'k'];
+      }else if(s.encoder==='h264_amf'){
+        q=['-rc','cqp','-qp_i',String(s.crf),'-qp_p',String(s.crf)];
+      }else if(s.encoder==='h264_nvenc'){
+        q=['-rc','vbr','-cq',String(s.crf),'-b:v','0'];
+      }else if(s.encoder==='h264_videotoolbox'){
+        const vtQuality=Math.max(30,Math.min(95,Math.round(100-s.crf*1.5)));
+        q=['-q:v',String(vtQuality)];
+      }else{
+        q=['-global_quality',String(s.crf)];
+      }
+      const encoderPreset=s.encoder==='h264_amf'?['-quality','balanced']:s.encoder==='h264_nvenc'?['-preset','p4']:s.encoder==='h264_videotoolbox'?[]:['-preset','medium'];
+      return ['-c:v',s.encoder,...q,...encoderPreset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
+    }
+    return ['-c:v','libx264',...this.quality(s),'-preset',s.preset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
+  }
   metadata(s={metadata:true}){if(!s.metadata)return ['-map_metadata','0'];const tags={...M.normalize(s.metadataTags||{}),title:s.metadataTitle||'',country:s.country||'',country_name:require('../shared/countries.js').list.find(c=>c.code===s.country)?.name||'',creation_time:new Date().toISOString(),date:new Date().toISOString().slice(0,10),creomaker_processing_id:crypto.randomUUID()};if(!tags.comment)tags.comment='Prepared with CreoMaker'+(s.country?' | Region: '+s.country:'');return ['-map_metadata','-1','-map_metadata:s','-1',...Object.entries(tags).flatMap(([key,value])=>['-metadata',key+'='+value])];}
   uniqueArgs(s,p,filter,preview=false){
     const resize=preview?',scale=640:640:force_original_aspect_ratio=decrease':'';
@@ -191,15 +225,22 @@ class Engine {
     if(s.mode==='clean'&&inputs.some(i=>!videoExts.includes(path.extname(i.path).toLowerCase())))throw Error('Clean3 принимает только видео.');
     const tails=(request.tails||[]).map(resolveMedia),music=s.musicMix?(request.music||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[],tailMusic=s.tailmix&&s.musicMix?(request.tailMusic||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[];
     if(s.mode==='clean'&&s.tailmix&&!tails.length)throw Error('Добавьте хвосты или отключите Tailmix.');
-    const hardware=s.acceleration==='cpu'?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv'})[s.acceleration];
+    const hardware=s.acceleration==='cpu'?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv',apple:'h264_videotoolbox'})[s.acceleration]||'libx264';
     if(s.encoder!=='libx264'&&!hardware.available.includes(s.encoder))throw Error('Выбранный GPU-кодировщик недоступен. Выберите «Авто» или CPU.');
     const work=path.join(outDir,'work');await fs.mkdir(work,{recursive:true});const outputs=[],total=inputs.length*(s.mode==='clean'?s.formats.length:s.copies);let done=0;
     const update=(label,fraction=0)=>onUpdate({label,progress:(done+fraction)/total,done,total,outputs:[...outputs]});
     const run=async(args,label,duration,from=0,weight=1)=>{update(label,from);const options={signal,threads:s.threads,duration,progress:v=>update(label,from+v*weight)};
-      const decode=process.platform==='win32'&&s.encoder!=='libx264'&&args.includes('-i')&&!args.includes('lavfi')&&!args.includes('concat')&&!args.includes('copy')&&!imageExts.includes(path.extname(args.at(-1)).toLowerCase());
-      if(decode){const accelerated=[...args],index=accelerated.indexOf('-i');accelerated.splice(index,0,'-hwaccel','d3d11va');try{await this.run('ffmpeg',accelerated,options);return;}catch(e){if(signal?.aborted)throw e;update('GPU-декодирование недоступно для фрагмента; декодирование CPU, кодирование '+s.encoder,from);}}
+      const decode=s.encoder!=='libx264'&&args.includes('-i')&&!args.includes('lavfi')&&!args.includes('concat')&&!args.includes('copy')&&!imageExts.includes(path.extname(args.at(-1)).toLowerCase());
+      if(decode){
+        const hwaccel=process.platform==='darwin'?'videotoolbox':process.platform==='win32'?'d3d11va':null;
+        if(hwaccel){
+          const accelerated=[...args],index=accelerated.indexOf('-i');accelerated.splice(index,0,'-hwaccel',hwaccel);
+          try{await this.run('ffmpeg',accelerated,options);return;}catch(e){if(signal?.aborted)throw e;update('GPU-декодирование недоступно для фрагмента; декодирование CPU, кодирование '+s.encoder,from);}
+        }
+      }
       await this.run('ffmpeg',args,options);};
-    update('Кодирование: '+s.encoder+' · фильтры и звук: CPU');const cycleCache=new Map();
+    const encName=s.encoder==='h264_videotoolbox'?'Apple VideoToolbox (GPU)':s.encoder==='h264_nvenc'?'NVIDIA NVENC (GPU)':s.encoder==='h264_amf'?'AMD AMF (GPU)':s.encoder==='h264_qsv'?'Intel QSV (GPU)':'CPU (x264)';
+    update('Кодирование: '+encName+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map();
     const baselines = new Map();
     try{for(const [inputIndex,input]of inputs.entries()){
       if(signal?.aborted)throw Error('Обработка остановлена.');const probe=await this.probe(input.path,signal);if(!probe.width)throw Error('Нужен файл видео или изображения.');

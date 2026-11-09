@@ -65,7 +65,7 @@
  /* ---------- Named user presets ---------- */
  // Content-specific metadata texts and the preview-only format are deliberately not part of a processing preset.
  const settingKeys=['mode','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
- const enums={mode:['clean','unique'],acceleration:['auto','cpu','amd','nvidia','intel'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
+ const enums={mode:['clean','unique'],acceleration:['auto','cpu','amd','nvidia','intel','apple'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
  const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','musicMix','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
  const idRe=/^[a-zA-Z0-9_-]{1,100}$/;
  function presetSettings(s){const out={};for(const k of settingKeys)if(s&&Object.hasOwn(s,k))out[k]=k==='formats'?[...s[k]]:s[k];return out;}

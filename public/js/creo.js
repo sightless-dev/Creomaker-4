@@ -6,7 +6,7 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:26,preset:'faster',threads:2,noise:true,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:420,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15};
+ const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:26,preset:'faster',threads:0,noise:true,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:420,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
@@ -140,11 +140,23 @@
  function configurePlatform(){
   const isMac=platform==='darwin'||/macintosh|mac os x/i.test(navigator.userAgent);
   document.documentElement.classList.toggle('is-mac',isMac);
-  const windows=platform==='win32',select=$('cm-acceleration');
-  for(const option of select.options){option.hidden=!windows&&option.value!=='cpu';option.disabled=option.hidden;}
-  $('cm-detect-gpu').hidden=!windows;
-  $('cm-undo').dataset.tooltip=platform==='darwin'?'Отменить · ⌘Z':'Отменить · Ctrl+Z';
-  if(!windows)$('cm-hardware').textContent='Локальное кодирование H.264 · процессор';
+  const select=$('cm-acceleration');
+  for(const option of select.options){
+    if(option.value==='auto'||option.value==='cpu'){
+      option.hidden=false;option.disabled=false;
+    }else if(option.value==='apple'){
+      option.hidden=!isMac;option.disabled=!isMac;
+    }else{
+      option.hidden=isMac;option.disabled=isMac;
+    }
+  }
+  $('cm-detect-gpu').hidden=false;
+  $('cm-undo').dataset.tooltip=isMac?'Отменить · ⌘Z':'Отменить · Ctrl+Z';
+  if(isMac){
+    $('cm-hardware').textContent='Аппаратное ускорение Apple VideoToolbox (Apple Silicon / Intel)';
+  }else{
+    $('cm-hardware').textContent='Кодирование и аппаратное декодирование — GPU. Монтажные фильтры, звук и изображения — CPU.';
+  }
  }
  function settingsHTML(){const s=workspace.settings;
   const number=(key,label,min,max,step=1)=>settingRow(settingIcons[key],label,`<input data-cm-setting="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${esc(s[key])}">`);
@@ -152,11 +164,11 @@
   $('cm-pro-fields').innerHTML=P.fields.filter(([key])=>key!=='outputFps'&&!key.startsWith('signal')).map(args=>number(...args)).join('')+select('tone','Тонирование',Object.entries(P.tones));profileStatus();
   $('cm-verification-fields').innerHTML=P.fields.filter(([key])=>key==='outputFps'||key.startsWith('signal')).map(args=>number(...args)).join('');
   $('cm-signal-change').checked=s.signalChange;$('cm-verify-results').checked=s.verifyResults;
-  $('cm-quality').innerHTML=number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v]))+number('threads','Потоков процессора',1,8);
+  $('cm-quality').innerHTML=number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v]))+number('threads','Потоков процессора (0 = авто)',0,32);
   $('cm-formats').innerHTML=Object.entries(formatLabels).map(([key,label])=>{const [w,h]=P.formats[key]||[];return `<label class="cm-format"><input type="checkbox" data-format="${key}" ${s.formats.includes(key)?'checked':''}><span class="cm-ratio" data-ratio="${key}" aria-hidden="true"></span><strong>${key}</strong><small>${label}</small><em class="cm-format-dim">${w}×${h}</em></label>`;}).join('');
   $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
   $('cm-unique-fields').innerHTML=[['uniqueNoise','Шум',0,15,1],['hue','Оттенок ±',0,10,.1],['saturation','Насыщенность',.95,1.1,.01],['contrast','Контраст',.95,1.1,.01],['brightness','Яркость',-.1,.1,.01],['speed','Скорость ± %',0,5,1],['jpeg','Качество JPEG',80,100,1],['zoom','Зум до %',0,5,.1],['rotate','Поворот ± °',0,5,.1],['blur','Размытие / резкость',0,5,.1],['pitch','Тон аудио ± %',0,30,1]].map(args=>number(...args)).join('');
-  $('cm-copy-value').textContent=s.copies;syncCopyPills();$('cm-flip').checked=s.flip;$('cm-metadata').checked=s.metadata;$('cm-acceleration').value=platform==='win32'?s.acceleration:'cpu';$('cm-name-tag').value=s.nameTag||'';
+  $('cm-copy-value').textContent=s.copies;syncCopyPills();$('cm-flip').checked=s.flip;$('cm-metadata').checked=s.metadata;$('cm-acceleration').value=s.acceleration||'auto';$('cm-name-tag').value=s.nameTag||'';
   $('cm-country').value=s.country;$('cm-metadata-title').value=s.metadataTitle;$('cm-meta-status').textContent='';metadataFields();
   updateTailFields();renderPresets();updateNameExample();
  }
@@ -806,7 +818,7 @@
  on('cm-dir-cancel-btn','click',closeOutputDirDialog);
  on('cm-dir-modal-close','click',closeOutputDirDialog);
  on('cm-copy-path','click',async()=>{const j=jobs.find(j=>j.id===selectedJob);await navigator.clipboard.writeText(j?.outputDir||$('cm-root-path').dataset.full||$('cm-root-path').textContent);status('Путь папки скопирован.');});
- on('cm-detect-gpu','click',async()=>{$('cm-detect-gpu').disabled=true;status('Проверяем GPU коротким тестом кодирования…');try{const h=await api('hardware');$('cm-hardware').textContent=h.available.length?'Доступно: '+h.available.join(', '):'Аппаратный кодировщик недоступен · CPU';status('Проверка GPU завершена.');}finally{$('cm-detect-gpu').disabled=false;}});
+ on('cm-detect-gpu','click',async()=>{$('cm-detect-gpu').disabled=true;status('Проверяем аппаратное ускорение коротким тестом…');try{const h=await api('hardware');const readable=h.available.map(a=>a==='h264_videotoolbox'?'Apple VideoToolbox':a==='h264_nvenc'?'NVIDIA NVENC':a==='h264_amf'?'AMD AMF':a==='h264_qsv'?'Intel QSV':a);$('cm-hardware').textContent=readable.length?'Доступно: '+readable.join(', '):'Аппаратный кодировщик недоступен · CPU (x264)';status('Проверка завершена: '+(readable[0]||'CPU'));}finally{$('cm-detect-gpu').disabled=false;}});
  on('cm-empty-list','click',async()=>{if(busy||importTask)throw Error('Дождитесь обработки или загрузки.');checkpoint('скрытие списка');workspace.hiddenInputs=media.filter(m=>m.kind==='inputs').map(m=>m.id);workspace.selected=[];current=null;previewSerial++;clearTimeout(previewTimer);$('cm-original').pause();$('cm-original').removeAttribute('src');$('cm-selected-name').textContent='Выберите исходник';await persist();renderFiles();updateStage();status('Список очищен. Файлы остались в локальной библиотеке — их можно вернуть.');});
  const restore=async()=>{checkpoint('возврат списка');workspace.hiddenInputs=[];await persist();renderFiles();updateStage();status('Исходники снова показаны. Отметьте нужные для обработки.');};
  on('cm-restore-list','click',restore);
