@@ -232,7 +232,10 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+let ipcRegistered = false;
 function registerIPC() {
+  if (ipcRegistered) return;
+  ipcRegistered = true;
   ipcMain.handle('dialog:select-directory', async (_event, defaultPath) => {
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {

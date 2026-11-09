@@ -701,6 +701,7 @@
   }
  });
  on('cm-dir-save-btn','click',()=>setOutputDir($('cm-dir-input')?.value||''));
+ $('cm-dir-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();setOutputDir($('cm-dir-input')?.value||'');}});
  on('cm-dir-reset-btn','click',()=>setOutputDir(''));
  on('cm-dir-cancel-btn','click',closeOutputDirDialog);
  on('cm-dir-modal-close','click',closeOutputDirDialog);
@@ -721,7 +722,7 @@
   if(s.showingSource)showMedia(mediaURL(s.source),isImage(srcMedia),1,at);else showMedia(s.url,s.image,1,at);
   $('cm-player-compare').setAttribute('aria-pressed',String(s.showingSource));$('cm-player-compare').textContent=s.showingSource?'Показать результат':'Показать исходник';$('cm-player-meta').textContent=(s.showingSource?'Исходник: '+srcMedia.name:'Результат · исходник: '+srcMedia.name);});
  $('cm-player-close').onclick=()=>{$('cm-player-dialog').close();};$('cm-player-dialog').addEventListener('close',()=>{$('cm-player').pause();$('cm-player').removeAttribute('src');$('cm-player').load();playerState=null;});
- for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog'])$(id)?.addEventListener('click',e=>{if(e.target===$(id))$(id).close();});
+ for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog','cm-dir-dialog'])$(id)?.addEventListener('click',e=>{if(e.target===$(id))$(id).close();});
  on('cm-export-folder','click',async()=>{const dir=await window.showDirectoryPicker({mode:'readwrite'}),j=jobs.find(j=>j.id===selectedJob);const outputDir=await dir.getDirectoryHandle('CreoMaker-'+j.id,{create:true});let n=0;for(const file of j.outputs){status('Сохраняем '+(++n)+'/'+j.outputs.length+' · '+file.name);const response=await fetch(outputURL(j.id,file.name));if(!response.ok)throw Error('Не удалось прочитать результат '+file.name+'. Сохранено '+(n-1)+' из '+j.outputs.length+'.');const handle=await outputDir.getFileHandle(file.name,{create:true}),stream=await handle.createWritable();await response.body.pipeTo(stream);}status('Все результаты ('+n+') сохранены в папку CreoMaker-'+j.id.slice(0,8)+'….');});
  // Presets
  on('cm-user-preset','change',e=>{workspace.activePreset=e.target.value||undefined;save();renderPresets();});

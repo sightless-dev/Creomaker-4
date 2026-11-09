@@ -32,10 +32,10 @@ test('output directory: default detection, custom setting and reset', async () =
       };
 
       const res = {
-        writeHead(code, h) { statusCode = code; resHeaders = h; },
+        writeHead(code, h) { statusCode = code; resHeaders = h; this.headersSent = true; },
         end(data) { if (data) resBody += data; },
         write(data) { if (data) resBody += data; },
-        headersSent: true,
+        headersSent: false,
         destroyed: false
       };
 
@@ -76,7 +76,35 @@ test('output directory: default detection, custom setting and reset', async () =
     assert.equal(cat2.json.isCustomOutput, true);
     assert.equal(path.resolve(cat2.json.outputRoot), path.resolve(customOut));
 
-    // 4. Reset back to default
+    // 4. Set custom output directory with surrounding quotes (Windows "Copy as path")
+    const quotedDir = path.join(tmpRoot, 'quoted dir with spaces');
+    const quotedRes = await request('POST', '/api/creo/set-output-dir', { path: `"${quotedDir}"` });
+    assert.equal(quotedRes.status, 200);
+    assert.equal(quotedRes.json.ok, true);
+    assert.equal(path.resolve(quotedRes.json.outputRoot), path.resolve(quotedDir));
+    assert.ok(fs.existsSync(quotedDir));
+
+    // 5. Set custom output directory with Cyrillic characters
+    const cyrillicDir = path.join(tmpRoot, 'Папка Креативов 2026');
+    const cyrillicRes = await request('POST', '/api/creo/set-output-dir', { path: cyrillicDir });
+    assert.equal(cyrillicRes.status, 200);
+    assert.equal(cyrillicRes.json.ok, true);
+    assert.equal(path.resolve(cyrillicRes.json.outputRoot), path.resolve(cyrillicDir));
+    assert.ok(fs.existsSync(cyrillicDir));
+
+    // 6. Attempting to set an existing file instead of directory must fail
+    const dummyFile = path.join(tmpRoot, 'not-a-folder.txt');
+    await fsp.writeFile(dummyFile, 'hello');
+    const failRes = await request('POST', '/api/creo/set-output-dir', { path: dummyFile });
+    assert.equal(failRes.status, 400);
+    assert.match(failRes.json.error, /является файлом/);
+
+    // 7. Open folder of non-existent job must fail
+    const openFail = await request('POST', '/api/creo/open-folder', { id: 'non-existent-id' });
+    assert.equal(openFail.status, 400);
+    assert.match(openFail.json.error, /Задача не найдена/);
+
+    // 8. Reset back to default
     const resetRes = await request('POST', '/api/creo/set-output-dir', { path: '' });
     assert.equal(resetRes.status, 200);
     assert.equal(resetRes.json.ok, true);

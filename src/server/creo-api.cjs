@@ -90,13 +90,16 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    if(route==='session'&&req.method==='DELETE'){tokens.delete(req.headers['x-creo-token']);json(res,200,{ok:true});return true;}
    if(route==='catalog'&&req.method==='GET'){await refreshLibrary();let ver='1.1.0';try{ver=JSON.parse(await fsp.readFile(path.join(root,'package.json'),'utf8')).version||ver;}catch{}json(res,200,{media:[...media.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true})).map(publicMedia),jobs:[...jobs.values()].map(publicJob).reverse(),defaults,formats,platform:process.platform,version:ver,outputRoot:results,defaultOutputRoot:defaultResults,isCustomOutput:path.resolve(results)!==path.resolve(defaultResults),available:fs.existsSync(engine.ffmpeg)&&fs.existsSync(engine.ffprobe)});return true;}
    if(route==='set-output-dir'&&req.method==='POST'){
-    const b=await body(req);const raw=typeof b.path==='string'?b.path.trim():'';
+    const b=await body(req);let raw=typeof b.path==='string'?b.path.trim():'';
+    raw=raw.replace(/^["']+|["']+$/g,'').trim();
     if(!raw||path.resolve(raw)===path.resolve(defaultResults)){
      results=defaultResults;await saveConfig({outputDir:null});
      json(res,200,{ok:true,outputRoot:results,defaultOutputRoot:defaultResults,isCustom:false});return true;
     }
     const target=path.resolve(raw);
     try{
+     const st=await fsp.stat(target).catch(()=>null);
+     if(st&&!st.isDirectory())throw Error('Указанный путь является файлом, а не папкой.');
      await fsp.mkdir(target,{recursive:true});
      const testFile=path.join(target,'.creo-write-test-'+Date.now());
      await fsp.writeFile(testFile,'creo');
@@ -122,7 +125,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     }else if(process.platform==='win32'){
      try{
       const ps="Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Выберите папку для вывода готовых роликов'; if($f.ShowDialog() -eq 'OK'){ $f.SelectedPath }";
-      picked=execFileSync('powershell',['-NoProfile','-Command',ps],{encoding:'utf8'}).trim()||null;
+      picked=execFileSync('powershell',['-NoProfile','-Sta','-Command',ps],{encoding:'utf8'}).trim()||null;
      }catch{}
     }
     json(res,200,{ok:true,path:picked,canceled:!picked});return true;
@@ -205,7 +208,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     if(!job)throw Error('Задача не найдена.');
     const folder=path.resolve(job.outputDir||path.join(results,job.id));
     if(path.basename(folder)!==job.id)throw Error('Неверный путь результата.');
-    await fsp.access(folder);
+    try{await fsp.access(folder);}catch{throw Error('Папка задачи не найдена на диске. Возможно, она была перемещена или удалена.');}
     const command={win32:'explorer.exe',darwin:'/usr/bin/open'}[process.platform]||'xdg-open';
     await new Promise((resolve,reject)=>{
      const child=spawn(command,[folder],{windowsHide:false,detached:true,stdio:'ignore'});
