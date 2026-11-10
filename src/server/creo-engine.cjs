@@ -12,7 +12,7 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:26, preset:'faster', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
@@ -187,7 +187,7 @@ class Engine {
       }else{
         q=['-global_quality',String(s.crf)];
       }
-      const encoderPreset=s.encoder==='h264_amf'?['-quality','balanced']:s.encoder==='h264_nvenc'?['-preset','p4']:s.encoder==='h264_videotoolbox'?['-allow_sw','0']:['-preset','medium'];
+      const encoderPreset=s.encoder==='h264_amf'?['-quality','speed']:s.encoder==='h264_nvenc'?['-preset','p1']:s.encoder==='h264_videotoolbox'?['-allow_sw','0']:['-preset','veryfast'];
       return ['-c:v',s.encoder,...q,...encoderPreset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
     }
     return ['-c:v','libx264',...this.quality(s),'-preset',s.preset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
@@ -244,7 +244,7 @@ class Engine {
     const update=(label,fraction=0)=>onUpdate({label,progress:(done+fraction)/total,done,total,outputs:[...outputs]});
     const run=async(args,label,duration,from=0,weight=1)=>{update(label,from);const options={signal,threads:s.threads,duration,progress:v=>update(label,from+v*weight)};
       const codecIndex=args.indexOf('-c:v'),encoder=codecIndex<0?null:args[codecIndex+1];
-      const decode=encoder&&encoder!=='libx264'&&!args.includes('lavfi');
+      const decode=encoder&&encoder!=='libx264'&&encoder!=='copy'&&!args.includes('lavfi')&&!args.includes('concat');
       if(decode){
         const hwaccel=process.platform==='darwin'?'videotoolbox':process.platform==='win32'?'d3d11va':null;
         if(hwaccel){
@@ -304,7 +304,7 @@ class Engine {
               cycleCache.set(cycleKey,cycle);
             }
           }
-          await encode(rendered,settings=>this.mix(input.path,cycle,music,tailMusic,part,settings,e,vf,probe,run,target));
+          await encode(rendered,settings=>this.mix(input.path,cycle,music,tailMusic,part,settings,e,vf,probe,run,target,work));
         }
         await fs.rename(part,output);
         const finalProbe=await this.probe(output,signal);
@@ -338,6 +338,9 @@ class Engine {
     const [w,h]=formats[target],fps=s.outputFps||30,format=target.replace(':','_');
     const clips=[];
     let elapsed=0;
+    const compVf = compositionFilter(s, w, h);
+    const filterChain = scale('crop',w,h)+',fps='+fps+',format=yuv420p,setsar=1' + (compVf !== 'null' ? ',' + compVf : '');
+    const tailAf = 'aresample=44100,aformat=channel_layouts=stereo,apad' + (s.signalChange ? ',' + audioSignalFilter(s) : '');
     // All selected tails form one ordered cycle; fixed target duration may trim its ending.
     for(const [index,tail] of tails.entries()){
       if(elapsed>=s.tailSeconds)break;
@@ -347,35 +350,139 @@ class Engine {
       const clip='tail-'+format+'-'+index+'.mp4';
       const args=['-y','-i',tail.path];
       if(!probe.audio)args.push('-f','lavfi','-i','anullsrc=r=44100:cl=stereo');
-      args.push('-map','0:'+probe.videoIndex,'-map',probe.audio?'0:'+probe.audioIndex:'1:a:0','-vf',scale('crop',w,h)+',fps='+fps+',format=yuv420p,setsar=1','-af','aresample=44100,aformat=channel_layouts=stereo,apad','-t',f(duration),...this.codec(s),path.join(work,clip));
+      args.push('-map','0:'+probe.videoIndex,'-map',probe.audio?'0:'+probe.audioIndex:'1:a:0','-vf',filterChain,'-af',tailAf,'-t',f(duration),...this.codec(s),path.join(work,clip));
       await run(args,`Хвост ${index+1}/${tails.length} · ${target}`,duration,index*.3/tails.length,.3/tails.length);
       clips.push(clip);
       elapsed+=duration;
     }
-    const list=path.join(work,'cycle.txt');
+    const list=path.join(work,'cycle-'+format+'.txt');
     await fs.writeFile(list,clips.map(clip=>"file '"+clip+"'").join('\n'));
     const file=path.join(work,'cycle-'+format+'-'+fps+'.mp4');
     await run(['-y','-f','concat','-safe','1','-i',list,'-c','copy',file],'Сборка всех хвостов · '+target,elapsed,.3,.05);
-    return file;
+    return { file, duration: elapsed };
   }
-  async mix(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format){
-    const duration=edit.end-edit.start,total=duration+(cycle?s.tailSeconds:0);
+  async mix(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work){
+    if(cycle && work){
+      try{
+        await this.mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work);
+        return;
+      }catch(err){
+        // Fallback to legacy full-encode mix
+      }
+    }
+    await this.mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format);
+  }
+  async mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work){
+    const cycleFile = typeof cycle === 'string' ? cycle : cycle.file;
+    const cycleDuration = (typeof cycle === 'object' && cycle?.duration) ? cycle.duration : (await this.probe(cycleFile)).duration;
+    const duration = edit.end - edit.start;
+    const total = duration + s.tailSeconds;
+    const fade = Math.min(s.fade, Math.max(0, duration - .1));
+    const outputFps = s.outputFps || 30;
+    const [width, height] = formats[format];
+    const compVf = compositionFilter(s, width, height);
+
+    // 1. Render main creative segment with all filters and signal alterations applied
+    const mainPart = path.join(work, `main-${format.replace(':', '_')}-${crypto.randomInt(10000, 99999)}.mp4`);
+    const mainArgs = ['-y', '-ss', f(edit.start), '-t', f(duration), '-i', main];
+    const vfParts = [videoFilter, `fps=${outputFps}`, 'format=yuv420p', 'setsar=1', 'setpts=PTS-STARTPTS'];
+    if (fade > 0) vfParts.push(`fade=t=out:st=${f(duration - fade)}:d=${f(fade)}`);
+    if (compVf !== 'null') vfParts.push(compVf);
+    const mainVf = `[0:${probe.videoIndex}]${vfParts.join(',')}[mv]`;
+    const af = `aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS${fade ? `,afade=t=out:st=${f(duration - fade)}:d=${f(fade)}` : ''}` + (s.signalChange ? ',' + audioSignalFilter(s) : '');
+    const mainAf = probe.audio ? `[0:${probe.audioIndex}]${af}[ma]` : `anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`;
+
+    mainArgs.push('-filter_complex', `${mainVf};${mainAf}`, '-map', '[mv]', '-map', '[ma]', ...this.codec(s), '-t', f(duration), '-movflags', '+faststart', mainPart);
+    await run(mainArgs, 'Сборка клипа · ' + format, duration, .35, .15);
+
+    // 2. Build concat list for fast stream-copy
+    const repeats = Math.max(1, Math.ceil(s.tailSeconds / Math.max(0.1, cycleDuration)) + 1);
+    const listPath = path.join(work, `concat-${format.replace(':', '_')}-${crypto.randomInt(10000, 99999)}.txt`);
+    const listLines = [`file '${mainPart.replace(/\\/g, '/')}'`];
+    for (let i = 0; i < repeats; i++) {
+      listLines.push(`file '${cycleFile.replace(/\\/g, '/')}'`);
+    }
+    await fs.writeFile(listPath, listLines.join('\n'));
+
+    // 3. Fast concatenation via concat demuxer
+    const hasMusic = music && music.length > 0;
+    const hasTailMusic = tailMusic && tailMusic.length > 0;
+
+    if (!hasMusic && !hasTailMusic) {
+      // Pure stream copy: ~2-5s for 30 minutes!
+      const copyArgs = [
+        '-y',
+        '-f', 'concat', '-safe', '0', '-i', listPath,
+        '-c', 'copy',
+        ...this.metadata(s),
+        '-t', f(total),
+        '-movflags', '+faststart+use_metadata_tags',
+        output
+      ];
+      await run(copyArgs, 'Склейка хвостов · ' + format, total, .5, .5);
+    } else {
+      // Stream copy video (-c:v copy) while mixing looped music tracks
+      const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath];
+      const audioGraph = [];
+      const audioMixInputs = ['[0:a]'];
+      let inputIdx = 1;
+
+      for (const track of music) {
+        args.push('-stream_loop', '-1', '-t', f(total), '-i', track.path);
+        const label = 'm' + inputIdx;
+        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(total)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);
+        audioMixInputs.push(`[${label}]`);
+        inputIdx++;
+      }
+
+      for (const track of tailMusic) {
+        args.push('-stream_loop', '-1', '-t', f(s.tailSeconds), '-i', track.path);
+        const label = 't' + inputIdx;
+        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration * 1000)}|${Math.round(duration * 1000)}[${label}]`);
+        audioMixInputs.push(`[${label}]`);
+        inputIdx++;
+      }
+
+      if (audioMixInputs.length > 1) {
+        audioGraph.push(`${audioMixInputs.join('')}amix=inputs=${audioMixInputs.length}:duration=first:dropout_transition=2:normalize=0[outa]`);
+      } else {
+        audioGraph.push('[0:a]anull[outa]');
+      }
+
+      args.push(
+        '-filter_complex', audioGraph.join(';'),
+        '-map', '0:v',
+        '-map', '[outa]',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        ...this.metadata(s),
+        '-t', f(total),
+        '-movflags', '+faststart+use_metadata_tags',
+        output
+      );
+      await run(args, 'Склейка хвостов и звука · ' + format, total, .5, .5);
+    }
+  }
+  async mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format){
+    const cycleFile = typeof cycle === 'string' ? cycle : cycle?.file;
+    const duration=edit.end-edit.start,total=duration+(cycleFile?s.tailSeconds:0);
     const args=['-y','-ss',f(edit.start),'-t',f(duration),'-i',main],graph=[],audio=[];let input=1;
-    if(cycle){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',cycle);input++;}
-    const fade=cycle?Math.min(s.fade,Math.max(0,duration-.1)):0;
+    if(cycleFile){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',cycleFile);input++;}
+    const fade=cycleFile?Math.min(s.fade,Math.max(0,duration-.1)):0;
     const outputFps = s.outputFps || 30;
     graph.push(`[0:${probe.videoIndex}]${videoFilter},fps=${outputFps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS${fade?`,fade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[mv]`);
     const af=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
     graph.push(probe.audio?`[0:${probe.audioIndex}]${af}${fade?`,afade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[ma]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`);
-    if(cycle){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`,'[mv][tv]concat=n=2:v=1:a=0[joinedv]','[ma][ta]concat=n=2:v=0:a=1[base]');}else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
+    if(cycleFile){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`,'[mv][tv]concat=n=2:v=1:a=0[joinedv]','[ma][ta]concat=n=2:v=0:a=1[base]');}else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
     for(const track of music){args.push('-stream_loop','-1','-t',f(total),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(total)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);audio.push('['+label+']');input++;}
-    if(cycle)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration*1000)}|${Math.round(duration*1000)}[${label}]`);audio.push('['+label+']');input++;}
+    if(cycleFile)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration*1000)}|${Math.round(duration*1000)}[${label}]`);audio.push('['+label+']');input++;}
     graph.push(audio.length>1?`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0[mixeda]`:'[base]anull[mixeda]');
     const [width, height] = formats[format];
     graph.push('[joinedv]' + compositionFilter(s, width, height) + '[outv]');
     graph.push('[mixeda]' + audioSignalFilter(s) + '[outa]');
     args.push('-filter_complex',graph.join(';'),'-map','[outv]','-map','[outa]',...this.codec(s),...this.metadata(s),'-t',f(total),'-movflags','+faststart+use_metadata_tags',output);
-    await run(args,'Финальная сборка · '+format,total,cycle?.35:0,cycle?.65:1);
+    await run(args,'Финальная сборка · '+format,total,cycleFile?.35:0,cycleFile?.65:1);
   }
   async mixUnique(inputPath,probe,s,filter,music,output,duration,run,target,inputName){
     const args=['-y','-i',inputPath],graph=[],audio=['[basea]'];let input=1;

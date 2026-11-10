@@ -4,7 +4,7 @@
  'use strict';
  const defaults={gamma:1,vignette:0,colorShift:0,pixelation:0,outputFps:0,textureOpacity:0,tone:'neutral',verifyResults:true,signalChange:true,signalLevel:94,signalPitch:2,signalCrop:1};
  const fields=[['gamma','Гамма',.5,1.8,.05],['vignette','Виньетка · %',0,100,5],['colorShift','Разведение RGB · пикс.',0,12,1],['pixelation','Пикселизация · размер блока',0,16,1],['outputFps','FPS · 0 = авто',0,60,1],['textureOpacity','Текстура васи · %',0,40,1],['signalLevel','Уровень звука · %',80,120,1],['signalPitch','Сдвиг спектра · %',0,5,.1],['signalCrop','Композиция · обрезка края %',0,4,.1]];
- const base={...defaults,uniqueNoise:0,hue:0,saturation:1,contrast:1,brightness:0,speed:0,flip:false,jpeg:95,zoom:0,rotate:0,blur:0,pitch:0,crf:23};
+ const base={...defaults,uniqueNoise:0,hue:0,saturation:1,contrast:1,brightness:0,speed:0,flip:false,jpeg:95,zoom:0,rotate:0,blur:0,pitch:0,crf:28};
  const presets=[
   {id:'light',label:'Лёгкая уникализация',icon:'Ⅰ',description:'Мягкая цветокоррекция, небольшое зерно и бумажная фактура.',settings:{...base,uniqueNoise:2,hue:1,saturation:1.02,contrast:1.02,zoom:1,textureOpacity:8,vignette:10}},
   {id:'medium',label:'Средняя уникализация',icon:'Ⅱ',description:'Тёплое тонирование, виньетка, лёгкий поворот и изменение темпа.',settings:{...base,uniqueNoise:4,hue:3,saturation:1.04,contrast:1.05,zoom:2,rotate:.7,speed:1,blur:.3,gamma:1.05,vignette:25,textureOpacity:16,tone:'warm'}},
