@@ -87,6 +87,7 @@
  const bytes=v=>v>1024**3?(v/1024**3).toFixed(2)+' ГБ':(v/1024**2).toFixed(1)+' МБ';
  const time=v=>Number.isFinite(Number(v))?Number(v).toFixed(2).replace('.',',')+' с':'—';
  const roundTime=v=>{const n=typeof v==='string'?Number(v.trim().replace(',','.')):Number(v);return Number.isFinite(n)?Math.round(n*100)/100:0;};
+ const wholeTime=v=>Math.round(v)+' с';
  const plural=(n,one,few,many)=>{const a=Math.abs(n)%100,b=a%10;return n+' '+(a>10&&a<20?many:b===1?one:b>=2&&b<=4?few:many);};
  const askConfirm=(title,message,accept,danger)=>window.WorkspaceUI?.confirm?WorkspaceUI.confirm(title,message,{accept,danger}):Promise.resolve(window.confirm(title+'\n'+message));
  const previewAPI=(options,valid=()=>true)=>{const next=previewQueue.catch(()=>{}).then(()=>valid()?api('preview',options):null);previewQueue=next;return next;};
@@ -107,7 +108,7 @@
  const selectedMedia=()=>workspace.selected.map(id=>refs.get(id)).filter(Boolean);
  const isImage=m=>P.isImage(m);
  const durationOf=m=>m?.probe?.duration;
- function edit(){if(!current?.probe)return null;const dur=Math.max(0.05,roundTime(current.probe.duration));return workspace.edits[current.id] ||= {start:0,end:dur,strength:18,zones:[],time:0};}
+ function edit(){if(!current?.probe)return null;const duration=current.probe.duration;const e=workspace.edits[current.id] ||= {start:0,end:duration,strength:18,zones:[],time:0};e.end=P.trimEnd(e.end,duration);return e;}
  const hasEdit=id=>{const e=workspace.edits[id],m=refs.get(id);if(!e)return false;const d=roundTime(durationOf(m));return e.zones?.length>0||roundTime(e.start)>0||(d&&roundTime(e.end)<d-.01);};
  function plan(){return P.planBatch({settings:workspace.settings,inputs:selectedMedia().map(m=>({id:m.id,name:m.name,image:isImage(m),duration:durationOf(m)})),edits:workspace.edits,tails:workspace.tails,music:workspace.music});}
  const matchedPreset=()=>P.matchUserPreset(workspace.settings,workspace.userPresets);
@@ -137,6 +138,12 @@
   document.querySelectorAll('[data-scale]').forEach(b=>{const active=b.dataset.scale===s;b.classList.toggle('active',active);b.setAttribute('aria-checked',String(active));});
   if($('cm-scale'))$('cm-scale').value=s;
  }
+ function showTailDuration(seconds){
+  const mins=Math.floor(seconds/60),rest=seconds%60;
+  const label=mins?mins+' мин'+(rest?' '+rest+' с':''):rest+' с';
+  $('cm-tail-duration-val').textContent=label;
+  $('cm-tail-slider').setAttribute('aria-valuetext',label);
+ }
  function syncTailPills(){
   const sec=workspace.settings.tailSeconds||60;
   document.querySelectorAll('[data-quick-tail]').forEach(b=>{
@@ -144,10 +151,8 @@
    b.classList.toggle('active',active);
    b.setAttribute('aria-pressed',String(active));
   });
-  if($('cm-tail-duration-val')){
-   const mins=sec/60;
-   $('cm-tail-duration-val').textContent=sec%60===0?mins+' мин':sec+' с';
-  }
+  $('cm-tail-slider').value=sec;
+  showTailDuration(sec);
  }
  function configurePlatform(){
   const isMac=platform==='darwin'||/macintosh|mac os x/i.test(navigator.userAgent);
@@ -308,7 +313,8 @@
   $('cm-preview-empty').hidden=!!current;$('cm-stage').hidden=!current;
   if(!current){$('cm-selected-name').textContent='';setCompactPreview(false);previewStatus();}
   updateTrimUI();updateCropGuide();}
- function loadEditorValues(){const e=edit();if(!e)return;e.start=roundTime(e.start);e.end=roundTime(e.end);$('cm-start').value=e.start;$('cm-end').value=e.end;$('cm-strength').value=e.strength;$('cm-seek').value=e.time||0;$('cm-position').textContent=time(e.time||0);renderZones();updateTrimUI();}
+ function trimEndDisplay(end,duration){return end===duration&&duration>=1?Math.round(duration):roundTime(end);}
+ function loadEditorValues(){const e=edit();if(!e)return;$('cm-start').value=roundTime(e.start);$('cm-end').value=trimEndDisplay(e.end,current.probe.duration);$('cm-strength').value=e.strength;$('cm-seek').value=e.time||0;$('cm-position').textContent=time(e.time||0);renderZones();updateTrimUI();}
  async function selectFile(id,{showEditor=false}={}){const serial=++previewSerial;frameReady=false;drag=null;closeCopyPanel();$('cm-zones').replaceChildren();$('cm-drawing').hidden=true;$('cm-frame').hidden=true;$('cm-source-frame').hidden=true;
   current=refs.get(id);if(!current)return;renderFiles();$('cm-selected-name').textContent=current.name;const selected=current;
   if(!selected.probe)selected.probe=await api('probe',{method:'POST',data:{id}});if(serial!==previewSerial)return;
@@ -356,14 +362,14 @@
  function updateTrimUI(){const e=edit(),d=current?.probe?.duration;if(!e||!d||current.probe.image){$('cm-trim-length').textContent='';return;}
   Object.assign($('cm-trim-range').style,{left:e.start/d*100+'%',width:Math.max(0,(e.end-e.start)/d*100)+'%'});$('cm-playhead').style.left=Math.min(100,(e.time||0)/d*100)+'%';
   const len=e.end-e.start,s=workspace.settings,hasAudio=s.musicMix!==false&&workspace.music.length>0;
-  $('cm-trim-length').textContent=s.mode==='unique'?'Длительность '+time(d)+(hasAudio?' · с аудио':''):'Фрагмент '+time(len)+(s.tailmix?' · с хвостами '+time(len+s.tailSeconds):hasAudio?' · только аудио':'');}
- function setTime(t){const e=edit();if(!e)return;const d=roundTime(current.probe.duration);e.time=Math.max(0,Math.min(d,roundTime(t)));$('cm-seek').value=e.time;$('cm-position').textContent=time(e.time);updateTrimUI();save();schedulePreview();}
+  $('cm-trim-length').textContent=s.mode==='unique'?'Длительность '+wholeTime(d)+(hasAudio?' · с аудио':''):'Фрагмент '+(e.start===0&&e.end===d&&d>=1?wholeTime(len):time(len))+(s.tailmix?' · с хвостами '+wholeTime(len+s.tailSeconds):hasAudio?' · только аудио':'');}
+ function setTime(t){const e=edit();if(!e)return;const d=current.probe.duration;e.time=Math.max(0,Math.min(d,roundTime(t)));$('cm-seek').value=e.time;$('cm-position').textContent=time(e.time);updateTrimUI();save();schedulePreview();}
  function stepFrame(dir){if(!current?.probe||current.probe.image)return;setTime((edit().time||0)+dir/(current.probe.frameRate||30));}
- function setTrim(key,value){const e=edit(),d=roundTime(current.probe.duration),v=roundTime(value);
-  const start=key==='start'?v:roundTime(e.start),end=key==='end'?v:roundTime(e.end);
-  if(!Number.isFinite(v)||v<0||v>d)throw Error('Время должно быть от 0 до '+time(d)+'.');
-  if(end-start<.05)throw Error(key==='start'?'Начало должно быть раньше конца хотя бы на 0,05 с.':'Конец должен быть позже начала хотя бы на 0,05 с.');
-  checkpoint(key==='start'?'начало фрагмента':'конец фрагмента');e[key]=v;$('cm-'+key).value=v;$('cm-'+key).setCustomValidity('');updateTrimUI();save();renderFiles();updatePlanIfOpen();}
+ function setTrim(key,value){const e=edit(),d=current.probe.duration,rounded=roundTime(value),v=key==='end'?P.trimEnd(rounded,d):rounded;
+  const start=key==='start'?v:e.start,end=key==='end'?v:e.end;
+  if(v<0||v>d)throw Error('Время должно быть от 0 до '+time(d)+'.');
+  if(end-start<Math.min(d,.05)-1e-9)throw Error(key==='start'?'Начало должно быть раньше конца хотя бы на 0,05 с.':'Конец должен быть позже начала хотя бы на 0,05 с.');
+  checkpoint(key==='start'?'начало фрагмента':'конец фрагмента');e[key]=v;$('cm-'+key).value=key==='end'?trimEndDisplay(v,d):v;$('cm-'+key).setCustomValidity('');updateTrimUI();save();renderFiles();updatePlanIfOpen();}
  function renderZones(){const e=edit();$('cm-zones').replaceChildren();if(!e||workspace.settings.mode==='unique'||isImage(current))return;
   for(const [i,z]of e.zones.entries()){const rect=document.createElement('div');rect.className='cm-zone';rect.dataset.zone=i;rect.tabIndex=0;rect.setAttribute('role','group');rect.setAttribute('aria-label','Зона '+(i+1)+'. Перетаскивание или стрелки; Delete — удалить');rect.style.setProperty('--zone-color','hsl('+Math.round(i*137.5%360)+' 80% 65%)');
    rect.innerHTML='<span class="cm-zone-label">'+(i+1)+'</span><button type="button" class="cm-zone-remove" aria-label="Удалить зону '+(i+1)+'">×</button>'+['nw','ne','sw','se'].map(v=>'<span class="cm-zone-handle '+v+'" data-resize="'+v+'"></span>').join('');
@@ -729,12 +735,17 @@
   checkpoint('заполнение кадра','scale');workspace.settings.scale=s;
   syncScaleUI();save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();
  });
+ function setTailDuration(sec){
+  if(workspace.settings.tailSeconds===sec)return;
+  checkpoint('длительность хвостов','tailSeconds');workspace.settings.tailSeconds=sec;
+  $('cm-tail-seconds').value=sec;
+  updateTailFields();save();updateEstimate();updateTrimUI();
+ }
+ on('cm-tail-slider','input',e=>showTailDuration(e.target.valueAsNumber));
+ on('cm-tail-slider','change',e=>setTailDuration(e.target.valueAsNumber));
  on('cm-tail-duration-control','click',e=>{
   const b=e.target.closest('[data-quick-tail]');if(!b)return;
-  const sec=Number(b.dataset.quickTail);if(!sec||workspace.settings.tailSeconds===sec)return;
-  checkpoint('длительность хвостов','tailSeconds');workspace.settings.tailSeconds=sec;
-  if($('cm-tail-seconds'))$('cm-tail-seconds').value=sec;
-  syncTailPills();updateTailFields();save();updateEstimate();updateTrimUI();
+  setTailDuration(Number(b.dataset.quickTail));
  });
  on('cm-name-tag','change',e=>{const tag=P.safeTag(e.target.value);checkpoint('метка имени');workspace.settings.nameTag=tag;e.target.value=tag;save();updateEstimate();});
  on('cm-name-tag','input',e=>{$('cm-name-example').textContent=P.outputName({index:0,name:(selectedMedia()[0]||current)?.name||'ролик.mp4',target:workspace.settings.mode==='unique'?1:workspace.settings.formats[0],mode:workspace.settings.mode,image:workspace.settings.mode==='unique'&&isImage(selectedMedia()[0]||current),tag:e.target.value});});
@@ -778,7 +789,7 @@
   panels.forEach(d=>{d.open=anyClosed;});
   $('cm-library-toggle-all').lastChild.textContent=anyClosed?'Свернуть списки':'Развернуть списки';
  });
- on('cm-reset-edit','click',()=>{if(!current)return;checkpoint('сброс монтажа');workspace.edits[current.id]={start:0,end:Math.max(0.05,roundTime(current.probe.duration)),strength:18,zones:[],time:roundTime(edit()?.time||0)};loadEditorValues();save();renderFiles();schedulePreview();status('Монтаж файла сброшен. Ctrl+Z — вернуть.');});
+ on('cm-reset-edit','click',()=>{if(!current)return;checkpoint('сброс монтажа');workspace.edits[current.id]={start:0,end:current.probe.duration,strength:18,zones:[],time:edit()?.time||0};loadEditorValues();save();renderFiles();schedulePreview();status('Монтаж файла сброшен. Ctrl+Z — вернуть.');});
  on('cm-copy-edit','click',()=>$('cm-copy-panel').hidden?openCopyPanel():closeCopyPanel());on('cm-copy-cancel','click',()=>{closeCopyPanel();$('cm-copy-edit').focus();});on('cm-copy-apply','click',applyCopy);
  $('cm-copy-panel').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();closeCopyPanel();$('cm-copy-edit').focus();}});
  // Stage shortcuts: only when focus is not in a text/number field. Zones handle their own arrows.

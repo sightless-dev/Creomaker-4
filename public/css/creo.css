@@ -1719,6 +1719,12 @@
   display: none !important;
 }
 
+#cm-tail-slider {
+  width: 100%;
+  accent-color: var(--accent);
+  margin: 0 0 6px;
+}
+
 .cm-tail-duration-header {
   display: flex;
   align-items: center;

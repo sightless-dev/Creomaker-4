@@ -23,7 +23,7 @@ function config(raw={}) {
   if(!Array.isArray(s.formats)||!s.formats.length||s.formats.some(f=>!formats[f]))throw Error('Выберите форматы кадра.'); s.formats=[...new Set(s.formats)];
   if(s.previewFormat&&!formats[s.previewFormat])throw Error('Неверный формат предпросмотра.');
   if(!['crop','letterbox','stretch'].includes(s.scale)||!presets.includes(s.preset))throw Error('Неверный режим масштабирования или кодирования.');
-  for(const [key,min,max] of [['crf',0,51],['threads',0,32],['bitrate',10000,15000],['tailSeconds',1,900],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
+  for(const [key,min,max] of [['crf',0,51],['threads',0,32],['bitrate',10000,15000],['tailSeconds',1,1800],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
   for(const [key,,min,max] of P.fields)s[key]=num(s[key],min,max,P.defaults[key]);
   for(const key of ['colorShift','pixelation','outputFps'])s[key]=Math.round(s[key]);
   if(s.outputFps&&s.outputFps<12)throw Error('Частота кадров: 0 или от 12 до 60.');
@@ -37,8 +37,8 @@ const f=n=>Number(n).toFixed(6).replace(/\.?0+$/,'')||'0';
 const random=(a,b)=>a+crypto.randomInt(0,1000000)/1000000*(b-a);
 function scale(mode,w,h){return mode==='stretch'?`scale=${w}:${h}`:mode==='letterbox'?`scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`:`scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;}
 function editConfig(raw={},duration) {
-  const start=num(raw.start,0,Math.max(0,duration-.01),0),end=num(raw.end,0,duration,duration);
-  if(end-start<.05)throw Error('Конец фрагмента должен быть позже начала хотя бы на 0,05 с.');
+  const start=num(raw.start,0,Math.max(0,duration-.01),0),end=num(P.trimEnd(raw.end,duration),0,duration,duration);
+  if(end-start<Math.min(duration,.05)-1e-9)throw Error('Конец фрагмента должен быть позже начала хотя бы на 0,05 с.');
   const zones=raw.zones||[];if(!Array.isArray(zones)||zones.length>20)throw Error('Не более 20 зон размытия.');
   return {start,end,strength:num(raw.strength,4,40,18),zones:zones.map(z=>({x:num(z.x,0,1,0),y:num(z.y,0,1,0),w:num(z.w,.002,1,.1),h:num(z.h,.002,1,.1)}))};
 }
@@ -106,6 +106,13 @@ function variantFilter(settings, probe, seed) {
   }
   return filter;
 }
+function preferredStream(streams,type,score){
+  return streams.filter(stream=>stream.codec_type===type).sort((a,b)=>
+    Number(a.disposition?.attached_pic||0)-Number(b.disposition?.attached_pic||0)||
+    Number(b.disposition?.default||0)-Number(a.disposition?.default||0)||
+    score(b)-score(a)
+  )[0];
+}
 class Engine {
   constructor(root){this.texture=path.join(root,'src','server','assets','paper-texture.png');this.ffmpeg=toolPath(root,'ffmpeg');this.ffprobe=toolPath(root,'ffprobe');this.cache=new Map();}
   run(tool,args,{signal,progress,duration=1,threads=0}={}) {return new Promise((resolve,reject)=>{
@@ -126,8 +133,9 @@ class Engine {
     const key = file + ':' + stat.size + ':' + stat.mtimeMs;
     if (this.cache.has(key)) return this.cache.get(key);
     const raw = JSON.parse(await this.run('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], { signal }));
-    const video = raw.streams?.find(stream => stream.codec_type === 'video');
-    const audio = raw.streams?.some(stream => stream.codec_type === 'audio');
+    const streams=raw.streams||[];
+    const video=preferredStream(streams,'video',stream=>(stream.width||0)*(stream.height||0));
+    const audio=preferredStream(streams,'audio',stream=>stream.channels||0);
     const image = imageExts.includes(path.extname(file).toLowerCase());
     const duration = image ? 1 : Number(raw.format?.duration || video?.duration);
     if (!image && (!duration || !Number.isFinite(duration))) throw Error('Не удалось определить длительность медиа.');
@@ -138,7 +146,7 @@ class Engine {
       width: video?.width || 0, height: video?.height || 0,
       displayWidth: sideways ? video.height : video?.width || 0,
       displayHeight: sideways ? video.width : video?.height || 0,
-      audio: Boolean(audio), duration, image,
+      audio: Boolean(audio), duration, image, videoIndex:video?.index, audioIndex:audio?.index,
       videoDuration: Number(video?.duration) || duration,
       frameRate: rate[1] && rate[0] ? rate[0] / rate[1] : null,
       tags: raw.format?.tags || {}
@@ -149,14 +157,16 @@ class Engine {
   quality(s){return s.bitrateEnabled?['-b:v',s.bitrate+'k','-maxrate',s.bitrate+'k','-bufsize',s.bitrate*2+'k']:['-crf',String(s.crf)];}
   async hardware(){
     if(!this.hardwarePromise)this.hardwarePromise=(async()=>{
-      const available=[];
+      const measured=[];
       const candidates=process.platform==='darwin'?['h264_videotoolbox']:process.platform==='win32'?['h264_nvenc','h264_amf','h264_qsv']:['h264_nvenc','h264_vaapi','h264_qsv'];
       for(const encoder of candidates){
         try{
-          await this.run('ffmpeg',['-y','-f','lavfi','-i','color=size=128x128:rate=30','-frames:v','2','-an','-c:v',encoder,'-f','null','-'],{signal:AbortSignal.timeout(6000)});
-          available.push(encoder);
+          const start=performance.now();
+          await this.run('ffmpeg',['-f','lavfi','-i','testsrc2=size=720x1280:rate=30','-frames:v','45',...this.codec({...defaults,encoder}),'-an','-f','null','-'],{signal:AbortSignal.timeout(6000)});
+          measured.push({encoder,elapsed:performance.now()-start});
         }catch{}
       }
+      const available=measured.sort((a,b)=>a.elapsed-b.elapsed).map(result=>result.encoder);
       return {available,preferred:available[0]||'libx264'};
     })();
     return this.hardwarePromise;
@@ -172,11 +182,12 @@ class Engine {
         q=['-rc','vbr','-cq',String(s.crf),'-b:v','0'];
       }else if(s.encoder==='h264_videotoolbox'){
         const vtQuality=Math.max(30,Math.min(95,Math.round(100-s.crf*1.5)));
-        q=['-q:v',String(vtQuality)];
+        // VideoToolbox only supports constant quality on Apple Silicon.
+        q=process.arch==='arm64'?['-q:v',String(vtQuality)]:['-b:v',s.bitrate+'k'];
       }else{
         q=['-global_quality',String(s.crf)];
       }
-      const encoderPreset=s.encoder==='h264_amf'?['-quality','balanced']:s.encoder==='h264_nvenc'?['-preset','p4']:s.encoder==='h264_videotoolbox'?[]:['-preset','medium'];
+      const encoderPreset=s.encoder==='h264_amf'?['-quality','balanced']:s.encoder==='h264_nvenc'?['-preset','p4']:s.encoder==='h264_videotoolbox'?['-allow_sw','0']:['-preset','medium'];
       return ['-c:v',s.encoder,...q,...encoderPreset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
     }
     return ['-c:v','libx264',...this.quality(s),'-preset',s.preset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
@@ -186,8 +197,8 @@ class Engine {
     const resize=preview?',scale=640:640:force_original_aspect_ratio=decrease':'';
     if(!s.textureOpacity)return ['-vf',filter.video+resize];
     const w=Math.max(2,Math.floor((p.displayWidth||p.width)/2)*2),h=Math.max(2,Math.floor((p.displayHeight||p.height)/2)*2);
-    const graph='[0:v]'+filter.video+',scale='+w+':'+h+',format=yuv420p,setsar=1[base];[1:v]scale='+w+':'+h+',format=yuv420p,setsar=1[paper];[base][paper]blend=all_mode=softlight:all_opacity='+f(s.textureOpacity/100)+':shortest=1'+resize+'[styled]';
-    return ['-loop','1','-i',this.texture,'-filter_complex',graph,'-map','[styled]',...(!preview&&!p.image?['-map','0:a?']:[])];
+    const graph='[0:'+p.videoIndex+']'+filter.video+',scale='+w+':'+h+',format=yuv420p,setsar=1[base];[1:v]scale='+w+':'+h+',format=yuv420p,setsar=1[paper];[base][paper]blend=all_mode=softlight:all_opacity='+f(s.textureOpacity/100)+':shortest=1'+resize+'[styled]';
+    return ['-loop','1','-i',this.texture,'-filter_complex',graph,'-map','[styled]',...(!preview&&!p.image&&p.audio?['-map','0:'+p.audioIndex]:[])];
   }
   async preview(file,s,rawEdit,output,time=0,signal,seed){
     const p=await this.probe(file,signal);if(!p.width)throw Error('Файл не содержит изображения.');
@@ -220,25 +231,40 @@ class Engine {
       await this.run('ffmpeg',['-y','-framerate','1','-i',path.join(frames,'%02d.jpg'),'-vf','tile=12x1','-frames:v','1','-q:v','5',output],{signal});
     }finally{await fs.rm(frames,{recursive:true,force:true});}
   }
-  async process(request,resolveMedia,outDir,{signal,onUpdate=()=>{}}={}) {
+  async process(request,resolveMedia,outDir,{signal,reportDir,onUpdate=()=>{}}={}) {
     const s=config(request.settings),inputs=request.inputs.map(resolveMedia);if(!inputs.length||inputs.length>200)throw Error('Добавьте от 1 до 200 файлов.');
     if(s.mode==='clean'&&inputs.some(i=>!videoExts.includes(path.extname(i.path).toLowerCase())))throw Error('Clean3 принимает только видео.');
     const tails=(request.tails||[]).map(resolveMedia),music=s.musicMix?(request.music||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[],tailMusic=s.tailmix&&s.musicMix?(request.tailMusic||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[];
     if(s.mode==='clean'&&s.tailmix&&!tails.length)throw Error('Добавьте хвосты или отключите Tailmix.');
     const hardware=s.acceleration==='cpu'?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv',apple:'h264_videotoolbox'})[s.acceleration]||'libx264';
     if(s.encoder!=='libx264'&&!hardware.available.includes(s.encoder))throw Error('Выбранный GPU-кодировщик недоступен. Выберите «Авто» или CPU.');
-    const work=path.join(outDir,'work');await fs.mkdir(work,{recursive:true});const outputs=[],total=inputs.length*(s.mode==='clean'?s.formats.length:s.copies);let done=0;
+    await fs.mkdir(outDir,{recursive:true});
+    const work=await fs.mkdtemp(path.join(path.dirname(outDir),'.creomaker-work-'));
+    const outputs=[],total=inputs.length*(s.mode==='clean'?s.formats.length:s.copies);let done=0;
     const update=(label,fraction=0)=>onUpdate({label,progress:(done+fraction)/total,done,total,outputs:[...outputs]});
     const run=async(args,label,duration,from=0,weight=1)=>{update(label,from);const options={signal,threads:s.threads,duration,progress:v=>update(label,from+v*weight)};
-      const decode=s.encoder!=='libx264'&&args.includes('-i')&&!args.includes('lavfi')&&!args.includes('concat')&&!args.includes('copy')&&!imageExts.includes(path.extname(args.at(-1)).toLowerCase());
+      const codecIndex=args.indexOf('-c:v'),encoder=codecIndex<0?null:args[codecIndex+1];
+      const decode=encoder&&encoder!=='libx264'&&!args.includes('lavfi');
       if(decode){
         const hwaccel=process.platform==='darwin'?'videotoolbox':process.platform==='win32'?'d3d11va':null;
         if(hwaccel){
           const accelerated=[...args],index=accelerated.indexOf('-i');accelerated.splice(index,0,'-hwaccel',hwaccel);
-          try{await this.run('ffmpeg',accelerated,options);return;}catch(e){if(signal?.aborted)throw e;update('GPU-декодирование недоступно для фрагмента; декодирование CPU, кодирование '+s.encoder,from);}
+          try{await this.run('ffmpeg',accelerated,options);return;}catch(e){if(signal?.aborted)throw e;update('GPU-декодирование недоступно для фрагмента · '+encoder,from);}
         }
       }
       await this.run('ffmpeg',args,options);};
+    const encoders=s.acceleration==='auto'?[...hardware.available,'libx264']:[s.encoder];
+    let encoderIndex=0;
+    const encode=async(settings,render)=>{
+      for(;;){
+        try{return await render({...settings,encoder:encoders[encoderIndex]});}
+        catch(error){
+          if(encoderIndex===encoders.length-1||signal?.aborted)throw error;
+          const next=encoders[++encoderIndex];
+          update('Кодировщик недоступен · повтор на '+(next==='libx264'?'CPU':next));
+        }
+      }
+    };
     const encName=s.encoder==='h264_videotoolbox'?'Apple VideoToolbox (GPU)':s.encoder==='h264_nvenc'?'NVIDIA NVENC (GPU)':s.encoder==='h264_amf'?'AMD AMF (GPU)':s.encoder==='h264_qsv'?'Intel QSV (GPU)':'CPU (x264)';
     update('Кодирование: '+encName+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map();
     const baselines = new Map();
@@ -255,36 +281,30 @@ class Engine {
         if(s.mode==='unique'){
           const filter=variantFilter(rendered,probe),outDuration=probe.duration/filter.speed;
           if(!probe.image&&music.length){
-            await this.mixUnique(input.path,probe,rendered,s,filter,music,part,outDuration,run,target,input.name);
+            await encode(rendered,settings=>this.mixUnique(input.path,probe,settings,filter,music,part,outDuration,run,target,input.name));
           }else{
-            const args=['-y','-i',input.path,...this.uniqueArgs(rendered,probe,filter)];
-            if(probe.image){args.push('-frames:v','1');if(['.jpg','.jpeg'].includes(ext))args.push('-q:v',String(Math.max(1,Math.round(31-s.jpeg*.3))));if(ext==='.webp')args.push('-quality','90');}
-            else{args.push(...this.codec({...s,bitrateEnabled:false}));if(probe.audio)args.push('-af',filter.audio);args.push('-movflags','+faststart+use_metadata_tags');}
-            if(s.metadata)args.push(...this.metadata(s));args.push(part);await run(args,'Вариант '+target+' · '+input.name,outDuration);
+            const render=async settings=>{
+              const args=['-y','-i',input.path,...this.uniqueArgs(rendered,probe,filter)];
+              if(probe.image){args.push('-frames:v','1');if(['.jpg','.jpeg'].includes(ext))args.push('-q:v',String(Math.max(1,Math.round(31-s.jpeg*.3))));if(ext==='.webp')args.push('-quality','90');}
+              else{args.push(...this.codec({...settings,bitrateEnabled:false}));if(probe.audio)args.push('-af',filter.audio);args.push('-movflags','+faststart+use_metadata_tags');}
+              if(s.metadata)args.push(...this.metadata(s));args.push(part);await run(args,'Вариант '+target+' · '+input.name,outDuration);
+            };
+            if(probe.image)await render(s);else await encode(rendered,render);
           }
         }else{
-          const [w,h]=formats[target],e=editConfig(request.edits?.[input.id],probe.duration),mainDuration=e.end-e.start,main=path.join(work,'main.mp4');
+          const [w,h]=formats[target],e=editConfig(request.edits?.[input.id],probe.duration);
           const color=`${s.noise?'noise=alls=2:all_seed='+crypto.randomInt(1,99999)+',':''}hue=s=${f(random(1,1.05))}:h=${f(random(-1.5,1.5))},eq=contrast=${f(random(1.01,1.05))},`;
           const vf=blurZones(color+scale(s.scale,w,h)+',setsar=1',e,w,h);
-          await run(['-y','-ss',f(e.start),'-t',f(mainDuration),'-i',input.path,'-vf',vf,...this.codec(s),...this.metadata(s),'-movflags','+faststart+use_metadata_tags',main],`Подготовка ${target} · ${input.name}`,mainDuration,0,s.tailmix?.2:.65);
           let cycle=null;
           if(s.tailmix){
             const cycleKey = target + '@' + (rendered.outputFps || 30);
             cycle=cycleCache.get(cycleKey);
             if(!cycle){
-              const clips=[];let elapsed=0;
-              // All selected tails form one ordered cycle; fixed target duration may trim its ending.
-              for(const [ti,tail]of tails.entries()){
-                if(elapsed>=s.tailSeconds)break;const p=await this.probe(tail.path,signal);if(!p.width||p.image)throw Error('Хвост должен быть видео.');const d=Math.min(p.duration,s.tailSeconds-elapsed),clip=path.join(work,`tail-${target.replace(':','_')}-${ti}.mp4`);
-                const args=['-y','-i',tail.path];if(!p.audio)args.push('-f','lavfi','-i','anullsrc=r=44100:cl=stereo');
-                args.push('-map','0:v:0','-map',p.audio?'0:a:0':'1:a:0','-vf',scale('crop',w,h)+',fps='+(rendered.outputFps||30)+',format=yuv420p,setsar=1','-af','aresample=44100,aformat=channel_layouts=stereo,apad','-t',f(d),...this.codec(s),clip);
-                await run(args,`Хвост ${ti+1}/${tails.length} · ${target}`,d,.2,.3/tails.length);clips.push(clip);elapsed+=d;
-              }
-              const list=path.join(work,'cycle.txt');await fs.writeFile(list,clips.map(p=>"file '"+path.basename(p)+"'").join('\n'));
-              cycle=path.join(work,'cycle-'+target.replace(':','_')+'-'+(rendered.outputFps||30)+'.mp4');await run(['-y','-f','concat','-safe','1','-i',list,'-c','copy',cycle],'Сборка всех хвостов · '+target,elapsed,.5,.05);cycleCache.set(cycleKey,cycle);
+              cycle=await encode(rendered,settings=>this.prepareCycle(tails,work,target,settings,run,signal));
+              cycleCache.set(cycleKey,cycle);
             }
           }
-          await this.mix(main,cycle,music,tailMusic,part,rendered,mainDuration,probe.audio,run,target);
+          await encode(rendered,settings=>this.mix(input.path,cycle,music,tailMusic,part,settings,e,vf,probe,run,target));
         }
         await fs.rename(part,output);
         const finalProbe=await this.probe(output,signal);
@@ -296,6 +316,7 @@ class Engine {
           try {
             const edit = s.mode === 'clean' ? editConfig(request.edits?.[input.id], probe.duration) : null;
             entry.verification = await Verification.verify(this, input.path, output, {
+              reportDir,
               requireSignals: requiresSignals,
               requireAudio: requiresSignals || music.length > 0,
               metadataEnabled: s.metadata,
@@ -313,14 +334,39 @@ class Engine {
     }}finally{await fs.rm(work,{recursive:true,force:true});}
     return outputs;
   }
-  async mix(main,cycle,music,tailMusic,output,s,duration,hasAudio,run,format){
-    const total=duration+(cycle?s.tailSeconds:0),args=['-y','-i',main],graph=[],audio=[];let input=1;
+  async prepareCycle(tails,work,target,s,run,signal){
+    const [w,h]=formats[target],fps=s.outputFps||30,format=target.replace(':','_');
+    const clips=[];
+    let elapsed=0;
+    // All selected tails form one ordered cycle; fixed target duration may trim its ending.
+    for(const [index,tail] of tails.entries()){
+      if(elapsed>=s.tailSeconds)break;
+      const probe=await this.probe(tail.path,signal);
+      if(!probe.width||probe.image)throw Error('Хвост должен быть видео.');
+      const duration=Math.min(probe.duration,s.tailSeconds-elapsed);
+      const clip='tail-'+format+'-'+index+'.mp4';
+      const args=['-y','-i',tail.path];
+      if(!probe.audio)args.push('-f','lavfi','-i','anullsrc=r=44100:cl=stereo');
+      args.push('-map','0:'+probe.videoIndex,'-map',probe.audio?'0:'+probe.audioIndex:'1:a:0','-vf',scale('crop',w,h)+',fps='+fps+',format=yuv420p,setsar=1','-af','aresample=44100,aformat=channel_layouts=stereo,apad','-t',f(duration),...this.codec(s),path.join(work,clip));
+      await run(args,`Хвост ${index+1}/${tails.length} · ${target}`,duration,index*.3/tails.length,.3/tails.length);
+      clips.push(clip);
+      elapsed+=duration;
+    }
+    const list=path.join(work,'cycle.txt');
+    await fs.writeFile(list,clips.map(clip=>"file '"+clip+"'").join('\n'));
+    const file=path.join(work,'cycle-'+format+'-'+fps+'.mp4');
+    await run(['-y','-f','concat','-safe','1','-i',list,'-c','copy',file],'Сборка всех хвостов · '+target,elapsed,.3,.05);
+    return file;
+  }
+  async mix(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format){
+    const duration=edit.end-edit.start,total=duration+(cycle?s.tailSeconds:0);
+    const args=['-y','-ss',f(edit.start),'-t',f(duration),'-i',main],graph=[],audio=[];let input=1;
     if(cycle){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',cycle);input++;}
     const fade=cycle?Math.min(s.fade,Math.max(0,duration-.1)):0;
     const outputFps = s.outputFps || 30;
-    graph.push(`[0:v]fps=${outputFps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS${fade?`,fade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[mv]`);
+    graph.push(`[0:${probe.videoIndex}]${videoFilter},fps=${outputFps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS${fade?`,fade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[mv]`);
     const af=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
-    graph.push(hasAudio?`[0:a]${af}${fade?`,afade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[ma]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`);
+    graph.push(probe.audio?`[0:${probe.audioIndex}]${af}${fade?`,afade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[ma]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`);
     if(cycle){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`,'[mv][tv]concat=n=2:v=1:a=0[joinedv]','[ma][ta]concat=n=2:v=0:a=1[base]');}else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
     for(const track of music){args.push('-stream_loop','-1','-t',f(total),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(total)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);audio.push('['+label+']');input++;}
     if(cycle)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration*1000)}|${Math.round(duration*1000)}[${label}]`);audio.push('['+label+']');input++;}
@@ -329,23 +375,23 @@ class Engine {
     graph.push('[joinedv]' + compositionFilter(s, width, height) + '[outv]');
     graph.push('[mixeda]' + audioSignalFilter(s) + '[outa]');
     args.push('-filter_complex',graph.join(';'),'-map','[outv]','-map','[outa]',...this.codec(s),...this.metadata(s),'-t',f(total),'-movflags','+faststart+use_metadata_tags',output);
-    await run(args,'Финальная сборка · '+format,total,cycle?.55:.65,cycle?.45:.35);
+    await run(args,'Финальная сборка · '+format,total,cycle?.35:0,cycle?.65:1);
   }
-  async mixUnique(inputPath,probe,rendered,s,filter,music,output,duration,run,target,inputName){
+  async mixUnique(inputPath,probe,s,filter,music,output,duration,run,target,inputName){
     const args=['-y','-i',inputPath],graph=[],audio=['[basea]'];let input=1;
-    if(rendered.textureOpacity){
+    if(s.textureOpacity){
       args.push('-loop','1','-i',this.texture);const tex=input++;
       const w=Math.max(2,Math.floor((probe.displayWidth||probe.width)/2)*2),h=Math.max(2,Math.floor((probe.displayHeight||probe.height)/2)*2);
-      graph.push(`[0:v]${filter.video},scale=${w}:${h},format=yuv420p,setsar=1[basev]`,`[${tex}:v]scale=${w}:${h},format=yuv420p,setsar=1[paper]`,`[basev][paper]blend=all_mode=softlight:all_opacity=${f(rendered.textureOpacity/100)}:shortest=1[outv]`);
-    }else graph.push(`[0:v]${filter.video}[outv]`);
+      graph.push(`[0:${probe.videoIndex}]${filter.video},scale=${w}:${h},format=yuv420p,setsar=1[basev]`,`[${tex}:v]scale=${w}:${h},format=yuv420p,setsar=1[paper]`,`[basev][paper]blend=all_mode=softlight:all_opacity=${f(s.textureOpacity/100)}:shortest=1[outv]`);
+    }else graph.push(`[0:${probe.videoIndex}]${filter.video}[outv]`);
     const baseAf=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
-    graph.push(probe.audio?`[0:a]${filter.coreAudio||filter.audio},${baseAf}[basea]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[basea]`);
+    graph.push(probe.audio?`[0:${probe.audioIndex}]${filter.coreAudio||filter.audio},${baseAf}[basea]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[basea]`);
     for(const track of music){
       args.push('-stream_loop','-1','-t',f(duration),'-i',track.path);const label='m'+input;
       graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);
       audio.push('['+label+']');input++;
     }
-    graph.push(`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0,${audioSignalFilter(rendered)}[outa]`);
+    graph.push(`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0,${audioSignalFilter(s)}[outa]`);
     args.push('-filter_complex',graph.join(';'),'-map','[outv]','-map','[outa]',...this.codec({...s,bitrateEnabled:false}),...this.metadata(s),'-t',f(duration),'-movflags','+faststart+use_metadata_tags',output);
     await run(args,'Вариант '+target+' · '+inputName,duration);
   }
