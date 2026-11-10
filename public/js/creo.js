@@ -6,7 +6,7 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:true,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15};
+ const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
@@ -646,8 +646,19 @@
    if(token){try{catalog=await api('catalog');}catch{token=null;sessionStorage.removeItem('creoToken');}}
    if(!token){const res=await fetch('/api/creo/session');const auth=await res.json();if(!res.ok)throw Error(auth.error);token=auth.token;sessionStorage.setItem('creoToken',token);catalog=await api('catalog');}
    platform=catalog.platform||'win32';configurePlatform();media=catalog.media;refs.clear();media.forEach(m=>refs.set(m.id,m));jobs=catalog.jobs;busy=jobs.some(j=>j.status==='running');available=!!catalog.available;const saved=await workspaceStore.getSetting('creoWorkspace');let dropped=[];
-   if(saved&&saved.settings){workspace={...blankWorkspace(),...saved,settings:{...initial,...saved.settings}};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
-    const n=P.normalizePresets(saved.userPresets);workspace.userPresets=n.presets;dropped=n.dropped;if(dropped.length)workspace.rejectedPresets=[...(saved.rejectedPresets||[]),...(saved.userPresets||[]).filter(p=>!n.presets.some(x=>x.id===p?.id))].slice(-40);}
+   if(saved&&saved.settings){
+     const s={...initial,...saved.settings};
+     if(!s._speedVersion||s._speedVersion<2){
+      s.acceleration='auto';
+      s.preset='ultrafast';
+      s.crf=28;
+      s.threads=0;
+      s.noise=false;
+      s.bitrateEnabled=false;
+      s._speedVersion=2;
+     }
+     workspace={...blankWorkspace(),...saved,settings:s};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
+    const n=P.normalizePresets(saved.userPresets);workspace.userPresets=n.presets;dropped=n.dropped;if(dropped.length)workspace.rejectedPresets=[...(saved.rejectedPresets||[]),...(saved.userPresets||[]).filter(p=>!n.presets.some(x=>x.id===p?.id))].slice(-40);save();}
    else{workspace=blankWorkspace();workspace.selected=visibleInputs().map(m=>m.id);for(const kind of ['tails','music','tailMusic'])workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:8});}
    history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';updateOutputDirUI(catalog.outputRoot,catalog.defaultOutputRoot,catalog.isCustomOutput);
    settingsHTML();renderFiles();renderLibrary();updateMode();renderActive();renderJobs();$('cm-cancel').disabled=!busy;updateUndo();if(visible)events();
@@ -850,6 +861,22 @@
  on('cm-dir-cancel-btn','click',closeOutputDirDialog);
  on('cm-dir-modal-close','click',closeOutputDirDialog);
  on('cm-copy-path','click',async()=>{const j=jobs.find(j=>j.id===selectedJob);await navigator.clipboard.writeText(j?.outputDir||$('cm-root-path').dataset.full||$('cm-root-path').textContent);status('Путь папки скопирован.');});
+ on('cm-apply-max-speed','click',()=>{
+  checkpoint('режим максимальной скорости');
+  const s=workspace.settings;
+  s.acceleration='auto';
+  s.preset='ultrafast';
+  s.crf=28;
+  s.threads=0;
+  s.noise=false;
+  s.bitrateEnabled=false;
+  s._speedVersion=2;
+  configurePlatform();
+  settingsHTML();
+  save();
+  updateEstimate();
+  status('⚡ Включён режим максимальной скорости: GPU-ускорение (авто) · ultrafast · все ядра · CRF 28');
+ });
  on('cm-detect-gpu','click',async()=>{$('cm-detect-gpu').disabled=true;status('Проверяем аппаратное ускорение коротким тестом…');try{const h=await api('hardware');const readable=h.available.map(a=>a==='h264_videotoolbox'?'Apple VideoToolbox':a==='h264_nvenc'?'NVIDIA NVENC':a==='h264_amf'?'AMD AMF':a==='h264_qsv'?'Intel QSV':a);$('cm-hardware').textContent=readable.length?'Доступно: '+readable.join(', '):'Аппаратный кодировщик недоступен · CPU (x264)';status('Проверка завершена: '+(readable[0]||'CPU'));}finally{$('cm-detect-gpu').disabled=false;}});
  on('cm-empty-list','click',async()=>{if(busy||importTask)throw Error('Дождитесь обработки или загрузки.');checkpoint('скрытие списка');workspace.hiddenInputs=media.filter(m=>m.kind==='inputs').map(m=>m.id);workspace.selected=[];current=null;previewSerial++;clearTimeout(previewTimer);$('cm-original').pause();$('cm-original').removeAttribute('src');$('cm-selected-name').textContent='Выберите исходник';await persist();renderFiles();updateStage();status('Список очищен. Файлы остались в локальной библиотеке — их можно вернуть.');});
  const restore=async()=>{checkpoint('возврат списка');workspace.hiddenInputs=[];await persist();renderFiles();updateStage();status('Исходники снова показаны. Отметьте нужные для обработки.');};

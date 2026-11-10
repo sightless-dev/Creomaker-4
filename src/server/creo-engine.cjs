@@ -12,7 +12,7 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:true, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
@@ -162,7 +162,7 @@ class Engine {
       for(const encoder of candidates){
         try{
           const start=performance.now();
-          await this.run('ffmpeg',['-f','lavfi','-i','testsrc2=size=720x1280:rate=30','-frames:v','45',...this.codec({...defaults,encoder}),'-an','-f','null','-'],{signal:AbortSignal.timeout(6000)});
+          await this.run('ffmpeg',['-f','lavfi','-i','testsrc2=size=320x240:rate=30','-frames:v','10',...this.codec({...defaults,encoder}),'-an','-f','null','-'],{signal:AbortSignal.timeout(10000)});
           measured.push({encoder,elapsed:performance.now()-start});
         }catch{}
       }
@@ -182,12 +182,11 @@ class Engine {
         q=['-rc','vbr','-cq',String(s.crf),'-b:v','0'];
       }else if(s.encoder==='h264_videotoolbox'){
         const vtQuality=Math.max(30,Math.min(95,Math.round(100-s.crf*1.5)));
-        // VideoToolbox only supports constant quality on Apple Silicon.
-        q=process.arch==='arm64'?['-q:v',String(vtQuality)]:['-b:v',s.bitrate+'k'];
+        q=['-q:v',String(vtQuality)];
       }else{
         q=['-global_quality',String(s.crf)];
       }
-      const encoderPreset=s.encoder==='h264_amf'?['-quality','speed']:s.encoder==='h264_nvenc'?['-preset','p1']:s.encoder==='h264_videotoolbox'?['-allow_sw','0']:['-preset','veryfast'];
+      const encoderPreset=s.encoder==='h264_amf'?['-quality','speed']:s.encoder==='h264_nvenc'?['-preset','p1']:s.encoder==='h264_qsv'?['-preset','veryfast']:[];
       return ['-c:v',s.encoder,...q,...encoderPreset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
     }
     return ['-c:v','libx264',...this.quality(s),'-preset',s.preset,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
@@ -367,7 +366,7 @@ class Engine {
         await this.mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work);
         return;
       }catch(err){
-        // Fallback to legacy full-encode mix
+        console.warn('mixFast fallback to mixLegacy:', err?.message || err);
       }
     }
     await this.mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format);
