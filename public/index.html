@@ -184,9 +184,10 @@
      </label>
      <div class="cm-tail-duration-control" id="cm-tail-duration-control">
       <div class="cm-tail-duration-header">
-       <span class="hint">Длительность хвостов:</span>
+       <label class="hint" for="cm-tail-slider">Длительность хвостов</label>
        <strong id="cm-tail-duration-val">1 мин</strong>
       </div>
+      <input id="cm-tail-slider" type="range" min="30" max="1800" step="1" value="60">
       <div class="cm-copy-pills" role="group" aria-label="Быстрый выбор длительности хвостов">
        <button type="button" class="cm-copy-pill active" data-quick-tail="60" aria-pressed="true">1 мин</button>
        <button type="button" class="cm-copy-pill" data-quick-tail="120" aria-pressed="false">2 мин</button>
@@ -263,7 +264,7 @@
    <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки (меню)</summary><div class="cm-advanced-body">
     <details class="cm-disclosure cm-fold" id="cm-clean-extra"><summary><span data-icon="expand"></span>Кадр и длительность хвостов</summary>
      <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="grain"></span><span>Лёгкий шум</span></span><input id="cm-noise" type="checkbox" checked></label>
-     <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="900" value="60"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>
+     <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="1800" value="60"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>
     </details>
     <details class="cm-fold cm-disclosure" id="cm-naming"><summary><span data-icon="tag"></span>Имена файлов</summary><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="tag"></span><span>Метка в имени</span></span><input id="cm-name-tag" type="text" maxlength="32" placeholder="Например, PT_v2" autocomplete="off"></label><p class="hint">Пример: <code id="cm-name-example"></code></p><p class="hint">Каждая задача пишет в свою папку, поэтому прошлые результаты не перезаписываются.</p></details>
     <details class="cm-fold cm-verification-settings cm-disclosure"><summary><span data-icon="check"></span>Изменения и проверка</summary>

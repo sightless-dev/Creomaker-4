@@ -163,7 +163,16 @@ test('job output folder: human-readable name format with date, mode and source',
 
     // Recreate API to read saved library
     api.close();
-    const api2 = createCreoAPI(tmpRoot, { dataDir: path.join(tmpRoot, 'data') });
+    const dataDir=path.join(tmpRoot,'data');
+    const engine={
+      async process(request,resolve,folder,{reportDir}){
+        const name='001_result.mp4',report=name+'.verification.json';
+        await fsp.writeFile(path.join(folder,name),'fixture');
+        await fsp.writeFile(path.join(reportDir,report),JSON.stringify({crf:request.settings.crf}));
+        return [{name,verification:{status:'verified',report}}];
+      }
+    };
+    let api2 = createCreoAPI(tmpRoot, {dataDir,engine});
     await api2.ready;
 
     // Helper with api2
@@ -183,18 +192,47 @@ test('job output folder: human-readable name format with date, mode and source',
       return { status: statusCode, json: resBody ? JSON.parse(resBody) : null };
     }
 
-    const jobRes = await request2('POST', '/api/creo/jobs?queue=1', {
+    assert.equal((await request2('POST','/api/creo/set-output-dir',{path:path.join(dataDir,'jobs')})).status,400);
+    const jobRequest = {
       inputs: ['mock1'],
       settings: { mode: 'clean', formats: ['9:16'], copies: 1, tailmix: false },
       tails: [], music: [], tailMusic: []
-    });
+    };
+    const [jobRes,second]=await Promise.all([
+      request2('POST','/api/creo/jobs?queue=1',jobRequest),
+      request2('POST','/api/creo/jobs?queue=1',{...jobRequest,settings:{...jobRequest.settings,crf:31}})
+    ]);
 
     assert.equal(jobRes.status, 202);
+    assert.equal(second.status,202);
+    assert.notEqual(jobRes.json.id,second.json.id);
     assert.ok(jobRes.json.id);
     assert.doesNotMatch(jobRes.json.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'should not be a raw UUID');
     assert.match(jobRes.json.id, /^Clean3_PL_PAR_006/, 'readable format [Mode]_[Source]_[Extra]');
     assert.ok(fs.existsSync(jobRes.json.outputDir), 'output folder exists on disk');
+    assert.ok((await fsp.readdir(jobRes.json.outputDir)).every(name=>!name.endsWith('.json')));
+    assert.ok(fs.existsSync(path.join(tmpRoot,'data','jobs',jobRes.json.id,'request.json')));
+    const saved = await request2('GET', '/api/creo/job-request?id='+encodeURIComponent(jobRes.json.id));
+    assert.deepEqual(saved.json.inputs,['mock1']);
 
+    for(const job of [jobRes.json,second.json]){
+      const file=path.join(dataDir,'jobs',job.id,'job.json');
+      let status;
+      for(let i=0;i<50&&status!=='completed';i++){
+        status=JSON.parse(await fsp.readFile(file,'utf8')).status;
+        if(status!=='completed')await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      assert.equal(status,'completed');
+      assert.deepEqual(await fsp.readdir(job.outputDir),['001_result.mp4']);
+    }
+    api2.close();
+    api2=createCreoAPI(tmpRoot,{dataDir,engine});
+    await api2.ready;
+    const report=await request2('GET','/api/creo/verification?job='+encodeURIComponent(second.json.id)+'&name=001_result.mp4');
+    assert.equal(report.status,200);
+    assert.equal(report.json.crf,31);
+    assert.equal((await request2('POST','/api/creo/delete-job',{id:second.json.id})).status,200);
+    assert.deepEqual(await fsp.readdir(second.json.outputDir),['001_result.mp4']);
     api2.close();
   } finally {
     await fsp.rm(tmpRoot, { recursive: true, force: true });

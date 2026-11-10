@@ -250,9 +250,13 @@ async function verify(engine, sourceFile, outputFile, options, baseline, signal)
     thresholds: { videoColor: 2, compositionEdges: .035, amplitudeDb: .25, spectralBands: .01, centroidRatio: .01 },
     ...result, source: publicMetrics(source), output: publicMetrics(output)
   };
-  const name = path.basename(outputFile) + '.verification.json';
-  await fsp.writeFile(path.join(path.dirname(outputFile), name + '.tmp'), JSON.stringify(report, null, 2));
-  await fsp.rename(path.join(path.dirname(outputFile), name + '.tmp'), path.join(path.dirname(outputFile), name));
+  const name = options.reportDir && path.basename(outputFile) + '.verification.json';
+  if(name){
+    await fsp.mkdir(options.reportDir,{recursive:true});
+    const file=path.join(options.reportDir,name);
+    await fsp.writeFile(file+'.tmp',JSON.stringify(report,null,2));
+    await fsp.rename(file+'.tmp',file);
+  }
   return { ...result, version: VERSION, report: name, sourceSha256: source.sha256, outputSha256: output.sha256 };
 }
 

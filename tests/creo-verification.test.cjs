@@ -43,13 +43,15 @@ test('Real FFmpeg verifies variants, tails, identical files, silence and cancell
   const resolve = id => media.find(item => item.id === id);
   const base = { acceleration: 'cpu', preset: 'ultrafast', threads: 1, copies: 1, pitch: 0, speed: 0, formats: ['1:1'] };
   const request = { inputs: ['0'], tails: ['1'], music: [], tailMusic: [], edits: {} };
-  const variants = await engine.process({ ...request, settings: { ...base, mode: 'unique' } }, resolve, path.join(dir, 'variants'));
+  const reportDir = path.join(dir,'reports');
+  const variants = await engine.process({ ...request, settings: { ...base, mode: 'unique' } }, resolve, path.join(dir, 'variants'), {reportDir});
   const result = variants[0].verification;
   assert.ok(result, 'Each processed video has measured verification');
   const check = id => result.checks.find(item => item.id === id);
   for (const id of ['sha256', 'metadata', 'video', 'fps', 'audio', 'spectrum', 'amplitude']) assert.equal(check(id).state, 'changed', id + ': ' + JSON.stringify(check(id)));
   assert.notEqual(result.sourceSha256, result.outputSha256);
-  const report = JSON.parse(await fs.readFile(path.join(dir, 'variants', result.report)));
+  assert.deepEqual(await fs.readdir(path.join(dir,'variants')),[variants[0].name]);
+  const report = JSON.parse(await fs.readFile(path.join(reportDir, result.report)));
   assert.equal(report.source.fps, 30);
   assert.equal(report.output.fps, 25);
   assert.equal(report.source.sampleTimes.length, 4);

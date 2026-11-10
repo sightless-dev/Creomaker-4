@@ -54,10 +54,14 @@
  }
 
  /* ---------- Per-source edits: copy to other sources independently ---------- */
+ function trimEnd(value,duration){
+  const end=Number(value);
+  return end>duration&&(end===Math.round(duration)||end===Math.round(duration*100)/100)?duration:value;
+ }
  function copyEdit(from,duration,{trim=true,zones=true}={},target){
   const round2=n=>Math.round((Number(n)||0)*100)/100;
-  const d=round2(duration)||0,out=target?{...target,zones:(target.zones||[]).map(z=>({...z}))}:{start:0,end:d,strength:18,zones:[],time:0};
-  if(trim&&from){let start=Math.max(0,Math.min(round2(from.start)||0,Math.max(0,round2(d-.05)))),end=Math.min(d,Number.isFinite(Number(from.end))?round2(from.end):d);if(round2(from.start)>=round2(d-.05)||end-start<.05){start=0;end=d;}out.start=round2(start);out.end=round2(end);out.time=round2(Math.min(Math.max(out.time||0,0),d));}
+  const d=Number(duration)||0,out=target?{...target,zones:(target.zones||[]).map(z=>({...z}))}:{start:0,end:d,strength:18,zones:[],time:0};
+  if(trim&&from){let start=Math.max(0,round2(from.start)),end=Math.min(d,Number.isFinite(Number(from.end))?Number(from.end):d);if(end-start<Math.min(d,.05)-1e-9){start=0;end=d;}out.start=start;out.end=end;out.time=Math.min(d,round2(Math.max(out.time||0,0)));}
   if(zones&&from){out.zones=(from.zones||[]).slice(0,20).map(z=>({x:z.x,y:z.y,w:z.w,h:z.h}));out.strength=from.strength??18;}
   return out;
  }
@@ -108,6 +112,6 @@
  /* ---------- Bounded undo history of serialisable snapshots ---------- */
  function createHistory(limit=50){const stack=[];return {push(label,state){stack.push({label,state:JSON.stringify(state)});if(stack.length>limit)stack.shift();},pop(){const e=stack.pop();return e?{label:e.label,state:JSON.parse(e.state)}:null;},peek(){return stack.at(-1)?.label||'';},clear(){stack.length=0;},get size(){return stack.length;}};}
 
- return {defaults,fields,presets,tones,match,formats,safeBase,safeTag,outputName,isImage,planBatch,copyEdit,settingKeys,presetSettings,normalizePreset,normalizePresets,createPreset,renamePreset,updatePreset,deletePreset,applyPreset,matchUserPreset,createHistory};
+ return {defaults,fields,presets,tones,match,formats,safeBase,safeTag,outputName,isImage,planBatch,trimEnd,copyEdit,settingKeys,presetSettings,normalizePreset,normalizePresets,createPreset,renamePreset,updatePreset,deletePreset,applyPreset,matchUserPreset,createHistory};
 });
 

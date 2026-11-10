@@ -32,16 +32,51 @@ function generateJobFolder({mode='clean',inputs=[],tag='',preset=''}={}){
 }
 function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(root,'assets'),onUpdated}={}){
  const dir=dataDir||path.join(root,'data','creomaker'),uploads=path.join(dir,'uploads'),defaultResults=path.join(dir,'results'),previews=path.join(dir,'previews');
- const configFile=path.join(dir,'config.json');
+ const configFile=path.join(dir,'config.json'),history=path.join(dir,'jobs');
  let results=defaultResults;
- const engine=providedEngine||new Engine(root),media=new Map(),jobs=new Map(),tokens=new Map(),clients=new Set();let active=null,starting=false,queue=[],previewBusy=false,importCount=0,writeChain=Promise.resolve();
+ const engine=providedEngine||new Engine(root),media=new Map(),jobs=new Map(),tokens=new Map(),clients=new Set(),reservedJobs=new Set();let active=null,starting=false,queue=[],previewBusy=false,importCount=0,writeChain=Promise.resolve();
  const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
- const atomic=(file,value)=>{writeChain=writeChain.catch(()=>{}).then(async()=>{const temp=file+'.tmp';await fsp.writeFile(temp,JSON.stringify(value));await fsp.rename(temp,file);});return writeChain;};
+ const atomic=(file,value)=>{
+  writeChain=writeChain.catch(()=>{}).then(async()=>{
+   const temp=file+'.tmp';
+   await fsp.writeFile(temp,JSON.stringify(value));
+   for(let attempt=0;;attempt++){
+    try{await fsp.rename(temp,file);return;}
+    catch(error){
+     // Windows can briefly lock a file being read or scanned.
+     if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt===4)throw error;
+     await new Promise(resolve=>setTimeout(resolve,15*2**attempt));
+    }
+   }
+  });
+  return writeChain;
+ };
  const saveConfig=cfg=>atomic(configFile,cfg);
  const publicMedia=m=>({id:m.id,name:m.name,kind:m.kind,size:m.size,builtin:!!m.builtin,source:m.source,probe:m.probe});
  const publicJob=j=>({id:j.id,status:j.status,progress:j.progress,label:j.label,logs:j.logs,outputs:j.outputs,createdAt:j.createdAt,mode:j.mode,error:j.error,outputDir:j.outputDir||path.join(results,j.id),total:j.total,sources:j.sources,summary:j.summary,queuePosition:j.status==='queued'?queue.findIndex(q=>q.job.id===j.id)+1:undefined});
  const saveMedia=()=>atomic(path.join(dir,'library.json'),[...media.values()].filter(m=>!m.builtin).map(m=>({...m,path:path.basename(m.path)})));
- const persistJob=j=>atomic(path.join(j.outputDir||path.join(results,j.id),'job.json'),publicJob(j));
+ const stateDir=j=>j.stateDir||path.join(history,j.id);
+ const reservationKey=id=>id.normalize('NFC').toLowerCase();
+ async function isHistoryDir(target){
+  const relative=path.relative(await fsp.realpath(history),await fsp.realpath(target));
+  return relative===''||!path.isAbsolute(relative)&&relative!=='..'&&!relative.startsWith('..'+path.sep);
+ }
+ const persistJob=j=>{
+  const saved=publicJob(j);
+  if(path.dirname(saved.outputDir)===path.resolve(defaultResults))saved.outputDir='results/'+j.id;
+  return atomic(path.join(stateDir(j),'job.json'),saved);
+ };
+ async function forgetJob(j){
+  await writeChain.catch(()=>{});
+  const folder=stateDir(j);
+  await fsp.rm(path.join(folder,'job.json'),{force:true});
+  jobs.delete(j.id);
+  if(!j.stateDir){
+   const reports=(j.outputs||[]).map(output=>output.verification?.report).filter(name=>name?.endsWith('.verification.json')&&path.basename(name)===name);
+   await Promise.all(['request.json',...reports].map(name=>fsp.rm(path.join(folder,name),{force:true})));
+   await fsp.rmdir(folder).catch(error=>{if(!['ENOENT','ENOTEMPTY'].includes(error.code))throw error;});
+  }
+ }
  let scanning;
  function refreshLibrary(){
   scanning??=bundledLibrary(assetRoot).then(bundled=>{
@@ -58,17 +93,21 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    if(cfg&&typeof cfg.outputDir==='string'&&cfg.outputDir.trim())results=path.resolve(cfg.outputDir.trim());
   }catch{}
   if(process.env.CREO_OUTPUT_DIR)results=path.resolve(process.env.CREO_OUTPUT_DIR);
-  await Promise.all([uploads,results,defaultResults,previews].map(d=>fsp.mkdir(d,{recursive:true})));
+  await Promise.all([uploads,results,defaultResults,previews,history].map(d=>fsp.mkdir(d,{recursive:true})));
+  if(await isHistoryDir(results))results=defaultResults;
   try{const saved=JSON.parse(await fsp.readFile(path.join(dir,'library.json'),'utf8'));for(const m of saved){if(validId(m.id)&&path.basename(m.path)===m.path&&['inputs','tails','music','tailMusic'].includes(m.kind)){const full=path.join(uploads,m.path);if(fs.existsSync(full))media.set(m.id,{...m,path:full});}}}catch(e){if(e.code!=='ENOENT')throw Error('Не удалось прочитать библиотеку CreoMaker. Исходный файл сохранён.');}
   await refreshLibrary();
-  const scanDir=async d=>{
+  const scanDir=async (d,legacy=false)=>{
    try{
     for(const ent of await fsp.readdir(d,{withFileTypes:true})){
      if(!ent.isDirectory()||!validId(ent.name))continue;
      try{
       const j=JSON.parse(await fsp.readFile(path.join(d,ent.name,'job.json'),'utf8'));
-      if(!j.id||jobs.has(j.id))continue;
-      j.outputDir=path.join(d,ent.name);
+      if(j.id!==ent.name||jobs.has(j.id))continue;
+      delete j.stateDir;
+      if(legacy)j.outputDir=j.stateDir=path.join(d,ent.name);
+      else if(j.outputDir==='results/'+j.id)j.outputDir=path.resolve(defaultResults,j.id);
+      else if(typeof j.outputDir!=='string'||!path.isAbsolute(j.outputDir)||path.basename(j.outputDir)!==j.id)continue;
       if(['running','queued'].includes(j.status)){
        j.status='interrupted';j.label='Сервер был остановлен. Готовые файлы сохранены.';
        for(const output of j.outputs||[])if(output.verification?.status==='pending')output.verification={status:'unavailable',warnings:1,error:'Проверка прервана остановкой сервера.'};
@@ -78,8 +117,9 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     }
    }catch{}
   };
-  await scanDir(results);
-  if(path.resolve(results)!==path.resolve(defaultResults))await scanDir(defaultResults);
+  await scanDir(history);
+  await scanDir(results,true);
+  if(path.resolve(results)!==path.resolve(defaultResults))await scanDir(defaultResults,true);
  })();
  async function body(req){let data='';for await(const chunk of req){data+=chunk;if(data.length>2000000)throw Error('Запрос слишком большой.');}try{return JSON.parse(data||'{}')}catch{throw Error('Некорректный JSON.')}}
  function resolveMedia(id){if(!validId(id)||!media.has(id))throw Error('Файл не найден в библиотеке.');return media.get(id);}
@@ -92,7 +132,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
  }
  function startJob(job,request,folder){
    const ctrl=new AbortController();active={id:job.id,ctrl};job.status='running';job.label='Подготовка';let last=0,lastLog='';const verifiedStates=new Map();broadcast(job);
-   engine.process(request,resolveMedia,folder,{signal:ctrl.signal,onUpdate:u=>{job.progress=Math.max(job.progress,u.progress);if(u.total)job.total=u.total;const completedFile=u.outputs.length>job.outputs.length;const checkChanged=u.outputs.some(output=>verifiedStates.get(output.name)!==output.verification?.status);for(const output of u.outputs)verifiedStates.set(output.name,output.verification?.status);job.outputs=u.outputs;if(completedFile||checkChanged)persistJob(structuredClone(job)).catch(e=>{job.error='Не удалось записать историю: '+e.message;ctrl.abort();});job.label=u.label;if(lastLog!==u.label){job.logs.push({time:new Date().toISOString(),text:u.label});job.logs=job.logs.slice(-250);lastLog=u.label;}if(Date.now()-last>300){last=Date.now();broadcast(job);}}})
+   engine.process(request,resolveMedia,folder,{signal:ctrl.signal,reportDir:stateDir(job),onUpdate:u=>{job.progress=Math.max(job.progress,u.progress);if(u.total)job.total=u.total;const completedFile=u.outputs.length>job.outputs.length;const checkChanged=u.outputs.some(output=>verifiedStates.get(output.name)!==output.verification?.status);for(const output of u.outputs)verifiedStates.set(output.name,output.verification?.status);job.outputs=u.outputs;if(completedFile||checkChanged)persistJob(structuredClone(job)).catch(e=>{job.error='Не удалось записать историю: '+e.message;ctrl.abort();});job.label=u.label;if(lastLog!==u.label){job.logs.push({time:new Date().toISOString(),text:u.label});job.logs=job.logs.slice(-250);lastLog=u.label;}if(Date.now()-last>300){last=Date.now();broadcast(job);}}})
    .then(outputs=>{job.outputs=outputs;job.status='completed';job.progress=1;const warnings=outputs.filter(output=>['warning','unavailable'].includes(output.verification?.status)).length;job.label=warnings?'Файлы сохранены. Проверка с замечаниями · '+warnings:'Готово. Все файлы сохранены локально.';})
    .catch(e=>{job.status=ctrl.signal.aborted&&!job.error?'cancelled':'failed';job.error=job.error||e.message;job.label=job.status==='cancelled'?'Остановлено. Завершённые файлы сохранены.':'Обработка завершилась с ошибкой. Готовые файлы сохранены.';job.logs.push({time:new Date().toISOString(),text:job.label});})
    .finally(async()=>{active=null;await persistJob(job).catch(()=>{});broadcast(job);drain();});
@@ -124,6 +164,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
      const st=await fsp.stat(target).catch(()=>null);
      if(st&&!st.isDirectory())throw Error('Указанный путь является файлом, а не папкой.');
      await fsp.mkdir(target,{recursive:true});
+     if(await isHistoryDir(target))throw Error('Эта папка используется для истории задач.');
      const testFile=path.join(target,'.creo-write-test-'+Date.now());
      await fsp.writeFile(testFile,'creo');
      await fsp.unlink(testFile);
@@ -197,7 +238,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     // Without ?queue=1 the single-job reservation is unchanged: a second concurrent start is rejected before reading the body.
     const wantsQueue=url.searchParams.get('queue')==='1';
     if(previewBusy||!wantsQueue&&(active||starting))throw Error('Дождитесь текущей обработки или добавьте задачу в очередь.');
-    if(wantsQueue&&queue.length>=20)throw Error('В очереди уже 20 задач. Дождитесь их выполнения.');
+    if(wantsQueue&&queue.length+reservedJobs.size>=20)throw Error('В очереди уже 20 задач. Дождитесь их выполнения.');
     if(!wantsQueue)starting=true;
     try{const request=await body(req);delete request.queue;request.settings=config(request.settings);
     if(!Array.isArray(request.inputs)||!request.inputs.length||request.inputs.length>200)throw Error('Добавьте от 1 до 200 исходников.');request.inputs=[...new Set(request.inputs)];if(request.settings.mode==='clean'&&request.inputs.some(id=>!videoExts.includes(path.extname(resolveMedia(id).path).toLowerCase())))throw Error('Clean3 принимает только видео. Изображения обрабатываются в уникализации.');request.inputs.forEach(id=>{if(resolveMedia(id).kind!=='inputs')throw Error('Нужен исходный файл.');});
@@ -206,27 +247,35 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     if(request.presetName!=null&&(typeof request.presetName!=='string'||request.presetName.length>60))throw Error('Неверное название пресета.');
     const s=request.settings,resolvedInputs=request.inputs.map(i=>resolveMedia(i));
     const baseId=generateJobFolder({createdAt:new Date(),mode:s.mode,inputs:resolvedInputs,tag:s.nameTag,preset:request.presetName});
+    if(wantsQueue&&queue.length+reservedJobs.size>=20)throw Error('В очереди уже 20 задач. Дождитесь их выполнения.');
     let id=baseId,suffix=1;
-    while(jobs.has(id)||fs.existsSync(path.join(results,id))||fs.existsSync(path.join(defaultResults,id))){
+    while(jobs.has(id)||reservedJobs.has(reservationKey(id))||fs.existsSync(path.join(results,id))||fs.existsSync(path.join(defaultResults,id))||fs.existsSync(path.join(history,id))){
       suffix++;
       id=`${baseId}_${suffix}`;
     }
     const job={id,status:'running',progress:0,label:'Подготовка',logs:[],outputs:[],createdAt:new Date().toISOString(),mode:s.mode,total:request.inputs.length*(s.mode==='clean'?s.formats.length:s.copies),
      sources:resolvedInputs.map(m=>({id:m.id,name:m.name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
-    const folder=path.join(results,id);job.outputDir=folder;await fsp.mkdir(folder,{recursive:true});await fsp.writeFile(path.join(folder,'request.json'),JSON.stringify(request,null,2));jobs.set(id,job);
-    if(active||(wantsQueue&&starting)){job.status='queued';job.label='В очереди';queue.push({job,request,folder});await persistJob(job);broadcast(job);json(res,202,publicJob(job));return true;}
-    await persistJob(job);startJob(job,request,folder);json(res,202,publicJob(job));return true;}finally{if(!wantsQueue)starting=false;drain();}
+    const folder=path.resolve(results,id);job.outputDir=folder;
+    if(wantsQueue){job.status='queued';job.label='В очереди';}
+    reservedJobs.add(reservationKey(id));
+    try{
+     await Promise.all([folder,stateDir(job)].map(d=>fsp.mkdir(d,{recursive:true})));
+     await atomic(path.join(stateDir(job),'request.json'),request);
+     await persistJob(job);
+    }finally{reservedJobs.delete(reservationKey(id));}
+    jobs.set(id,job);
+    if(wantsQueue){queue.push({job,request,folder});broadcast(job);drain();}
+    else startJob(job,request,folder);
+    json(res,202,publicJob(job));return true;}finally{if(!wantsQueue)starting=false;drain();}
    }
    if(route==='validate-project'&&req.method==='POST'){const w=await body(req);w.settings=config(w.settings);if(!Array.isArray(w.selected)||w.selected.length>200||!w.edits||typeof w.edits!=='object')throw Error('Некорректный проект.');for(const id of w.selected)if(resolveMedia(id).kind!=='inputs')throw Error('Неверный исходник.');for(const key of ['tails','music','tailMusic']){if(!Array.isArray(w[key])||w[key].length>100)throw Error('Неверная группа '+key);for(const v of w[key]){if(resolveMedia(key==='tails'?v:v.id).kind!==key)throw Error('Неверная группа медиа.');if(key!=='tails'&&(!Number.isFinite(v.volume)||v.volume<0||v.volume>200))throw Error('Неверная громкость.');}}const edits={};for(const [id,e]of Object.entries(w.edits)){const m=resolveMedia(id);if(m.kind!=='inputs')throw Error('Неверный исходник монтажа.');const p=await engine.probe(m.path);edits[id]={...editConfig(e,p.duration),time:Math.max(0,Math.min(p.duration,Number(e.time)||0))};}const {presets:userPresets,dropped}=Profiles.normalizePresets(w.userPresets);for(const p of userPresets){try{config({...w.settings,...p.settings});}catch(e){throw Error('Пресет «'+p.name+'»: '+e.message);}}json(res,200,{settings:w.settings,selected:w.selected,tails:w.tails,music:w.music,tailMusic:w.tailMusic,edits,userPresets,droppedPresets:dropped});return true;}
-   if(route==='job-request'&&req.method==='GET'){const j=jobs.get(url.searchParams.get('id'));if(!j)throw Error('Задача не найдена.');const request=JSON.parse(await fsp.readFile(path.join(j.outputDir||path.join(results,j.id),'request.json'),'utf8'));delete request.queue;json(res,200,request);return true;}
+   if(route==='job-request'&&req.method==='GET'){const j=jobs.get(url.searchParams.get('id'));if(!j)throw Error('Задача не найдена.');const request=JSON.parse(await fsp.readFile(path.join(stateDir(j),'request.json'),'utf8'));delete request.queue;json(res,200,request);return true;}
    if(route==='cancel'&&req.method==='POST'){const r=await body(req);if(active?.id===r.id)active.ctrl.abort();else{const i=queue.findIndex(q=>q.job.id===r.id);if(i>=0){const [{job}]=queue.splice(i,1);job.status='cancelled';job.label='Убрана из очереди до запуска.';job.logs.push({time:new Date().toISOString(),text:job.label});await persistJob(job).catch(()=>{});broadcast(job);for(const q of queue)broadcast(q.job);}}json(res,200,{ok:true});return true;}
    if(route==='clear-jobs'&&req.method==='POST'){
     let cleared=0;
-    for(const [id,j] of [...jobs.entries()]){
+    for(const j of [...jobs.values()]){
      if(j.status==='running'||j.status==='queued')continue;
-     const jobDir=j.outputDir||path.join(results,id);
-     await fsp.unlink(path.join(jobDir,'job.json')).catch(()=>{});
-     jobs.delete(id);cleared++;
+     await forgetJob(j);cleared++;
     }
     json(res,200,{ok:true,cleared});return true;
    }
@@ -234,9 +283,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     const r=await body(req);const j=jobs.get(r.id);
     if(!j)throw Error('Задача не найдена.');
     if(j.status==='running'||j.status==='queued')throw Error('Нельзя удалить выполняющуюся задачу. Сначала остановите её.');
-    const jobDir=j.outputDir||path.join(results,j.id);
-    await fsp.unlink(path.join(jobDir,'job.json')).catch(()=>{});
-    jobs.delete(j.id);
+    await forgetJob(j);
     json(res,200,{ok:true,id:j.id});return true;
    }
    if(route==='events'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');clients.add(res);for(const j of jobs.values())res.write('event: job\ndata: '+JSON.stringify(publicJob(j))+'\n\n');req.on('close',()=>clients.delete(res));return true;}
@@ -245,7 +292,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
      const output=job?.outputs.find(item=>item.name===name);
      const report=output?.verification?.report;
      if(!report||path.basename(report)!==report)throw Error('Отчёт проверки не найден.');
-     const file=path.join(job.outputDir||path.join(results,job.id),report);
+     const file=path.join(stateDir(job),report);
      if(url.searchParams.has('download'))await serve(req,res,file,report);
      else json(res,200,JSON.parse(await fsp.readFile(file,'utf8')));
      return true;
