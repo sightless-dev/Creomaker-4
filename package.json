@@ -1,6 +1,6 @@
 {
   "name": "creomaker-local",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Independent local CreoMaker video workspace",
   "scripts": { "start": "node server.cjs", "test": "node --test tests/creo-verification.test.cjs tests/creo-workflow.test.cjs" },
