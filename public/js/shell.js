@@ -54,12 +54,76 @@
     }
 
     /* ---------- Keyboard shortcuts ---------- */
+    const visibleButton = (...ids) => ids.map($).find(b => b && !b.hidden && !b.disabled && b.offsetParent !== null);
     document.addEventListener('keydown', e => {
       const mod = platform === 'darwin' ? e.metaKey : e.ctrlKey;
-      if (!mod || e.altKey || e.shiftKey) return;
+      if (!mod || e.altKey || e.shiftKey || e.repeat) return;
+      if (document.querySelector('dialog[open]')) return;
       const idx = ['1', '2', '3'].indexOf(e.key);
-      if (idx >= 0) { e.preventDefault(); showView(views[idx]); }
+      if (idx >= 0) { e.preventDefault(); showView(views[idx]); return; }
+      const key = e.key.toLowerCase();
+      if (key === 'o' || key === 'щ') {            // Ctrl/Cmd+O: add files, like any desktop editor
+        e.preventDefault();
+        showView('edit');
+        $('cm-add-inputs')?.click();
+      } else if (e.key === 'Enter') {              // Ctrl/Cmd+Enter: start (or queue) the export
+        const run = visibleButton('cm-run', 'cm-queue');
+        if (run && app.dataset.view === 'edit') { e.preventDefault(); run.click(); }
+      }
     });
+
+    /* ---------- Drag & drop anywhere ----------
+       Only the media bin used to accept drops; a file dropped on the viewer made the window navigate to the
+       file itself. Now every drop is handled: on the Edit view it goes to the media bin, on a Library card it
+       goes to that list, anywhere else it is simply ignored. */
+    const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+    const bin = $('cm-drop');
+    let dragDepth = 0;
+    const pickerFor = target => {
+      if (target.closest('#cm-drop')) return null;                     // the bin handles its own drop
+      if (app.dataset.view === 'edit') return 'inputs';
+      if (app.dataset.view === 'library') {
+        const card = target.closest('.cm-layers-grid > details');
+        const list = card?.querySelector('[id$="-list"]')?.id || '';
+        return { 'cm-tails-list': 'tails', 'cm-music-list': 'music', 'cm-tailMusic-list': 'tailMusic' }[list] || false;
+      }
+      return false;
+    };
+    document.addEventListener('dragenter', e => {
+      if (!hasFiles(e)) return;
+      dragDepth++;
+      if (app.dataset.view === 'edit') bin?.classList.add('drag-over');
+    });
+    document.addEventListener('dragleave', e => {
+      if (!hasFiles(e)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) bin?.classList.remove('drag-over');
+    });
+    document.addEventListener('dragover', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (!e.target.closest('#cm-drop')) e.dataTransfer.dropEffect = pickerFor(e.target) ? 'copy' : 'none';
+    });
+    document.addEventListener('drop', e => {
+      if (!hasFiles(e)) return;
+      dragDepth = 0;
+      bin?.classList.remove('drag-over');
+      const kind = pickerFor(e.target);
+      if (kind === null) return;
+      e.preventDefault();
+      const input = kind && $('cm-pick-' + kind);
+      if (!input || !e.dataTransfer.files.length) return;
+      input.files = e.dataTransfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    /* ---------- Player: Space plays/pauses right away ---------- */
+    const player = $('cm-player'), playerDialog = $('cm-player-dialog');
+    if (player && playerDialog) {
+      new MutationObserver(() => {
+        if (playerDialog.open && !player.hidden) requestAnimationFrame(() => player.focus({ preventScroll: true }));
+      }).observe(playerDialog, { attributes: true, attributeFilter: ['open'] });
+    }
 
     /* ---------- Title bar ---------- */
     const menuBtn = $('app-menu-btn');
@@ -84,8 +148,16 @@
       }
     }).observe(document.body, { childList: true, subtree: true });
 
+    /* Shortcut hints in tooltips, with the right modifier per platform */
+    const mod = platform === 'darwin' ? '⌘' : 'Ctrl+';
+    const hint = (id, text) => { const el = $(id); if (el) el.title = text; };
+    hint('cm-run', 'Запустить обработку · ' + mod + 'Enter');
+    hint('cm-queue', 'Добавить в очередь · ' + mod + 'Enter');
+    hint('cm-add-inputs', 'Добавить видео и фото · ' + mod + 'O');
+    document.querySelectorAll('.rail-btn[data-app-view]').forEach((b, i) => { b.title = b.title.replace(/ · Ctrl\+\d$/, '') + ' · ' + mod + (i + 1); });
+
     /* ---------- Viewer empty state: guide to the bin when files are already loaded ---------- */
-    const bin = $('cm-drop'), emptyTitle = $('cm-empty-title');
+    const emptyTitle = $('cm-empty-title');
     const syncEmpty = () => {
       if (!bin || !emptyTitle) return;
       emptyTitle.textContent = bin.classList.contains('is-empty')

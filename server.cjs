@@ -74,10 +74,15 @@ const server = http.createServer(async (req, res) => {
     if (!entry || !['GET', 'HEAD'].includes(req.method)) return res.writeHead(404).end('Not found');
     const file = path.join(root, entry[0]);
     const stat = await fs.promises.stat(file);
-    res.writeHead(200, {
-      'Content-Type': entry[1], 'Content-Length': stat.size, 'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY'
-    });
+    // Revalidate instead of re-downloading: the UI shell (incl. the 0.9 MB font) answers 304 on every later load,
+    // while an in-app update still takes effect immediately because the tag changes with size and mtime.
+    const etag = '"' + stat.size.toString(36) + '-' + Math.floor(stat.mtimeMs).toString(36) + '"';
+    const common = { 'Cache-Control': 'no-cache', ETag: etag, 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, common).end();
+      return;
+    }
+    res.writeHead(200, { ...common, 'Content-Type': entry[1], 'Content-Length': stat.size });
     if (req.method === 'HEAD') res.end();
     else fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
   } catch (error) {

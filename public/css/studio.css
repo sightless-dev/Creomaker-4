@@ -648,3 +648,30 @@
 #creo-view #cm-pro-fields select { min-height: 26px; height: 26px; padding-top: 0; padding-bottom: 0; }
 #creo-view #cm-unique-fields input[type=number],
 #creo-view #cm-pro-fields input[type=number] { text-align: right; }
+
+/* ---------- Listen with video (mix preview) ---------- */
+.cm-preview-caption #cm-play-mix { margin-left: auto; }
+.cm-preview-caption #cm-play-mix + #cm-refresh-preview { margin-left: 0; }
+#cm-play-mix kbd { margin-left: 4px; }
+.cm-track .cm-play-mix { color: var(--muted); }
+.cm-track .cm-play-mix:hover { color: var(--text); }
+.cm-mix-panel {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.cm-mix-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 220px) 64px auto;
+  align-items: center;
+  gap: 10px;
+}
+.cm-mix-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 500; }
+.cm-mix-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-mix-name .ui-icon { color: var(--accent); width: 15px; height: 15px; }
+.cm-mix-row input[type=range] { width: 100%; }
+.cm-mix-row input[type=number] { height: 26px; min-height: 26px; text-align: right; padding: 0 6px; }

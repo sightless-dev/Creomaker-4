@@ -549,7 +549,7 @@
  window.openOutputDir=openRootFolder;
 
  function renderLibrary(){for(const kind of ['tails','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
-  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
+  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}${kind==='music'?`<button type="button" class="icon-button cm-play-mix" data-play-mix aria-label="Прослушать вместе с видео: ${esc(m.name)}" title="Прослушать вместе с видео">${icon('film')}</button>`:''}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
   syncPlayingButtons();updateTailFields();updateEstimate();checkAssetsStatus();}
 
@@ -767,6 +767,7 @@
  on('cm-library','click',e=>{const all=e.target.closest('[data-library-all]');if(all){const kind=all.dataset.libraryAll;checkpoint('слои');workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:workspace[kind].find(t=>t.id===m.id)?.volume??8});renderLibrary();save();return;}
   const none=e.target.closest('[data-library-none]');if(none){checkpoint('слои');workspace[none.dataset.libraryNone]=[];renderLibrary();save();return;}
   const row=e.target.closest('[data-track-id]');if(!row)return;const m=refs.get(row.dataset.trackId);if(!m)return;
+  if(e.target.closest('[data-play-mix]')){const volInput=row.querySelector('input[type=number]');openMixPreview([{id:m.id,kind:row.dataset.kind,volume:volInput?Number(volInput.value):8}]);return;}
   if(e.target.closest('[data-play-track]')){const kind=row.dataset.kind;if(kind==='tails'){stopInlineAudio();openPlayer({url:mediaURL(m.id),name:m.name,audio:false,volume:1});}else{const volInput=row.querySelector('input[type=number]'),rawVol=volInput?Number(volInput.value):(workspace[kind].find(v=>v.id===m.id)?.volume??8);toggleInlineAudio(kind,m.id,mediaURL(m.id),rawVol,m.name);}return;}
   const move=e.target.closest('[data-order]');if(move){const list=workspace.tails,index=list.indexOf(m.id),target=index+Number(move.dataset.order);if(index>=0&&target>=0&&target<list.length){checkpoint('порядок хвостов');[list[index],list[target]]=[list[target],list[index]];renderLibrary();save();row.parentElement.querySelector(`[data-track-id="${m.id}"] [data-order="${move.dataset.order}"]`)?.focus();}}});
  on('cm-preview-format','change',e=>{workspace.settings.previewFormat=e.target.value;save();updateCaptions();updateCropGuide();schedulePreview();});
@@ -913,12 +914,86 @@
   const b=e.target.closest('[data-preview-output]');if(!b)return;const name=b.dataset.previewOutput;openPlayer({url:outputURL(selectedJob,name),name,image:/\.(png|jpg|jpeg|webp|bmp|tiff)$/i.test(name),source:b.dataset.source&&refs.has(b.dataset.source)?b.dataset.source:null});});
  /* Player: result ↔ source toggle keeps the playback position for a direct comparison. */
  let playerState=null;
- function openPlayer({url,name,image=false,audio=false,volume=1,source=null}){stopInlineAudio();playerState={url,name,image,source,showingSource:false};$('cm-player').classList.toggle('cm-audio',audio);$('cm-player-name').textContent=name;$('cm-player-compare').hidden=!source;$('cm-player-compare').setAttribute('aria-pressed','false');$('cm-player-compare').textContent='Показать исходник';$('cm-player-meta').textContent=source?'Результат · исходник: '+(refs.get(source)?.name||''):'';showMedia(url,image,volume);if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();}
+ function openPlayer({url,name,image=false,audio=false,volume=1,source=null}){stopInlineAudio();stopMix();playerState={url,name,image,source,showingSource:false};$('cm-player').classList.toggle('cm-audio',audio);$('cm-player-name').textContent=name;$('cm-player-compare').hidden=!source;$('cm-player-compare').setAttribute('aria-pressed','false');$('cm-player-compare').textContent='Показать исходник';$('cm-player-meta').textContent=source?'Результат · исходник: '+(refs.get(source)?.name||''):'';showMedia(url,image,volume);if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();}
  function showMedia(url,image,volume=1,at=0){if(image){$('cm-player').pause();$('cm-player').hidden=true;$('cm-player-image').src=url;$('cm-player-image').hidden=false;return;}$('cm-player-image').hidden=true;$('cm-player').volume=volume;$('cm-player').src=url;$('cm-player').hidden=false;if(at)$('cm-player').addEventListener('loadedmetadata',()=>{$('cm-player').currentTime=Math.min(at,$('cm-player').duration||at);},{once:true});$('cm-player').play().catch(()=>{});}
  on('cm-player-compare','click',()=>{if(!playerState?.source)return;const s=playerState,at=$('cm-player').hidden?0:$('cm-player').currentTime,srcMedia=refs.get(s.source);s.showingSource=!s.showingSource;
   if(s.showingSource)showMedia(mediaURL(s.source),isImage(srcMedia),1,at);else showMedia(s.url,s.image,1,at);
   $('cm-player-compare').setAttribute('aria-pressed',String(s.showingSource));$('cm-player-compare').textContent=s.showingSource?'Показать результат':'Показать исходник';$('cm-player-meta').textContent=(s.showingSource?'Исходник: '+srcMedia.name:'Результат · исходник: '+srcMedia.name);});
- $('cm-player-close').onclick=()=>{$('cm-player-dialog').close();};$('cm-player-dialog').addEventListener('close',()=>{$('cm-player').pause();$('cm-player').removeAttribute('src');$('cm-player').load();playerState=null;});
+ $('cm-player-close').onclick=()=>{$('cm-player-dialog').close();};$('cm-player-dialog').addEventListener('close',()=>{stopMix();$('cm-player').pause();$('cm-player').removeAttribute('src');$('cm-player').load();playerState=null;});
+ /* ---------- Mix preview: the source clip with background music, mixed the way the export mixes it ----------
+    The engine starts every music track at the trimmed start of the clip, loops it, keeps the clip's own sound
+    and applies the track volume as a plain gain (8% = 0.08). Web Audio gives the same gain, including >100%. */
+ let mixCtx=null,mix=null;
+ const mixGain=pct=>Math.max(0,Math.min(2,(Number(pct)||0)/100));
+ function mixSourceMedia(){
+  if(current&&!isImage(current))return current;
+  const hidden=new Set(workspace.hiddenInputs||[]);
+  for(const id of workspace.selected){const m=refs.get(id);if(m&&!isImage(m))return m;}
+  return media.find(m=>m.kind==='inputs'&&!isImage(m)&&!hidden.has(m.id))||null;
+ }
+ function stopMix(){
+  if(!mix)return;
+  for(const t of mix.tracks){try{t.el.pause();t.el.removeAttribute('src');t.el.load();t.node.disconnect();t.gain.disconnect();}catch{}}
+  $('cm-mix-panel')?.remove();mix=null;
+ }
+ function selectedMixTracks(){return workspace.settings.musicMix?(workspace.music||[]).filter(t=>refs.has(t.id)).map(t=>({id:t.id,kind:'music',volume:t.volume??8})):[];}
+ function openMixPreview(list=selectedMixTracks()){
+  const src=mixSourceMedia();
+  if(!src){status('Добавьте видео в разделе «Монтаж», чтобы послушать музыку вместе с ним.',true);return;}
+  if(!list.length){status(workspace.settings.musicMix?'Отметьте музыку в Медиатеке: в экспорт попадут отмеченные треки.':'Фоновое аудио выключено. Включите «Наложить фоновое аудио», чтобы добавить музыку к ролику.',true);return;}
+  stopInlineAudio();stopMix();
+  const e=workspace.edits[src.id]||{},start=Math.max(0,Number(e.start)||0),end=Number(e.end)>start?Number(e.end):0;
+  try{mixCtx??=new AudioContext();mixCtx.resume().catch(()=>{});}catch{status('Звуковая система недоступна для предпрослушивания.',true);return;}
+  mix={source:src.id,start,end,tracks:list.map(t=>{const el=new Audio(mediaURL(t.id));el.loop=true;el.preload='auto';const node=mixCtx.createMediaElementSource(el),gain=mixCtx.createGain();gain.gain.value=mixGain(t.volume);node.connect(gain).connect(mixCtx.destination);return {...t,el,node,gain,name:refs.get(t.id)?.name||'Трек'};})};
+  playerState={url:mediaURL(src.id),name:src.name,image:false,source:null,showingSource:false,mix:true};
+  $('cm-player').classList.remove('cm-audio');$('cm-player-name').textContent=src.name+' · с музыкой';$('cm-player-compare').hidden=true;
+  $('cm-player-meta').textContent='Как в экспорте: музыка начинается с начала фрагмента'+(start?' ('+start.toFixed(2).replace('.',',')+' с)':'')+' и повторяется по кругу, звук ролика сохраняется. Громкость можно подстроить на слух, она сохранится в треке.';
+  renderMixPanel();
+  showMedia(playerState.url,false,1,start);
+  if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();
+ }
+ function renderMixPanel(){
+  $('cm-mix-panel')?.remove();if(!mix)return;
+  const panel=document.createElement('div');panel.id='cm-mix-panel';panel.className='cm-mix-panel';
+  panel.innerHTML=mix.tracks.map((t,i)=>`<div class="cm-mix-row" data-mix-index="${i}"><span class="cm-mix-name">${icon('music')}<span>${esc(t.name)}</span></span><input type="range" min="0" max="100" step="1" value="${Math.min(100,Number(t.volume)||0)}" aria-label="Громкость ${esc(t.name)}"><input type="number" min="0" max="200" step="1" value="${Number(t.volume)||0}" aria-label="Громкость ${esc(t.name)}, %"><span class="hint">%</span></div>`).join('');
+  $('cm-player-meta').before(panel);
+ }
+ function setMixVolume(i,value,persistValue){
+  const t=mix?.tracks[i];if(!t)return;const v=Math.max(0,Math.min(200,Math.round(Number(value)||0)));t.volume=v;t.gain.gain.value=mixGain(v);
+  const row=$('cm-mix-panel')?.querySelector(`[data-mix-index="${i}"]`);if(row){const r=row.querySelector('input[type=range]'),n=row.querySelector('input[type=number]');if(Number(r.value)!==Math.min(100,v))r.value=Math.min(100,v);if(Number(n.value)!==v)n.value=v;}
+  if(!persistValue)return;
+  const lib=document.querySelector(`#cm-${t.kind}-list [data-track-id="${t.id}"] input[type=number]`);if(lib)lib.value=v;
+  const track=(workspace[t.kind]||[]).find(x=>x.id===t.id);if(track&&track.volume!==v){checkpoint('громкость','volume:'+t.id);track.volume=v;save();presetState();}
+ }
+ $('cm-player-dialog').addEventListener('input',e=>{const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,false);});
+ $('cm-player-dialog').addEventListener('change',e=>{const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,true);});
+ {
+  const player=$('cm-player');
+  const syncMix=(force=false)=>{
+   if(!mix||playerState?.mix!==true)return;
+   const t=player.currentTime-mix.start,atEnd=mix.end&&player.currentTime>=mix.end-0.02;
+   if(atEnd&&!player.paused){player.pause();return;}
+   const playing=!player.paused&&!player.seeking&&player.readyState>=3&&t>=0&&!atEnd;
+   if(playing&&mixCtx?.state==='suspended')mixCtx.resume().catch(()=>{});
+   for(const tr of mix.tracks){
+    const d=tr.el.duration,want=t<=0?0:(d>0?t%d:t);
+    if(force||Math.abs(tr.el.currentTime-want)>0.2){try{tr.el.currentTime=want;}catch{}}
+    if(tr.el.playbackRate!==player.playbackRate)tr.el.playbackRate=player.playbackRate;
+    if(playing&&tr.el.paused)tr.el.play().catch(()=>{});else if(!playing&&!tr.el.paused)tr.el.pause();
+   }
+  };
+  player.addEventListener('play',()=>{if(mix&&playerState?.mix&&(player.currentTime<mix.start-0.01||(mix.end&&player.currentTime>=mix.end-0.05)))player.currentTime=mix.start;syncMix(true);});
+  for(const ev of ['playing','pause','waiting','seeking','ratechange'])player.addEventListener(ev,()=>syncMix(false));
+  player.addEventListener('seeked',()=>syncMix(true));
+  player.addEventListener('timeupdate',()=>syncMix(false));
+ }
+ on('cm-play-mix','click',()=>openMixPreview());
+ document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||!['p','з'].includes(e.key.toLowerCase()))return;
+  if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)||e.target.isContentEditable||document.querySelector('dialog[open]'))return;
+  const view=document.getElementById('app')?.dataset.view;if(view&&view!=='edit')return;
+  e.preventDefault();openMixPreview();
+ });
  for(const id of ['cm-player-dialog','cm-plan-dialog','cm-copy-count-dialog','cm-dir-dialog'])$(id)?.addEventListener('click',e=>{if(e.target===$(id))$(id).close();});
  on('cm-export-folder','click',async()=>{const dir=await window.showDirectoryPicker({mode:'readwrite'}),j=jobs.find(j=>j.id===selectedJob);const outputDir=await dir.getDirectoryHandle('CreoMaker-'+j.id,{create:true});let n=0;for(const file of j.outputs){status('Сохраняем '+(++n)+'/'+j.outputs.length+' · '+file.name);const response=await fetch(outputURL(j.id,file.name));if(!response.ok)throw Error('Не удалось прочитать результат '+file.name+'. Сохранено '+(n-1)+' из '+j.outputs.length+'.');const handle=await outputDir.getFileHandle(file.name,{create:true}),stream=await handle.createWritable();await response.body.pipeTo(stream);}status('Все результаты ('+n+') сохранены в папку CreoMaker-'+j.id.slice(0,8)+'….');});
  // Presets

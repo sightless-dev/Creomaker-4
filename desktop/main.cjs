@@ -160,6 +160,7 @@ async function startServer(codeDir, port) {
 }
 
 function buildMenu() {
+  const page = js => () => mainWindow?.webContents.executeJavaScript(js).catch(() => {});
   const clickUpdate = () => mainWindow?.webContents.executeJavaScript("document.getElementById('cm-update-btn')?.click()").catch(() => {});
   const clickChangeDir = () => mainWindow?.webContents.executeJavaScript("window.changeOutputDir?.()").catch(() => {});
   const clickOpenDir = () => mainWindow?.webContents.executeJavaScript("window.openOutputDir?.()").catch(() => {});
@@ -168,8 +169,6 @@ function buildMenu() {
       label: 'CreoMaker',
       submenu: [
         { role: 'about', label: 'О программе CreoMaker' },
-        { label: 'Папка вывода креативов…', click: clickChangeDir },
-        { label: 'Открыть папку вывода', click: clickOpenDir },
         { type: 'separator' },
         { label: 'Проверить обновления…', click: clickUpdate },
         { type: 'separator' },
@@ -179,17 +178,25 @@ function buildMenu() {
         { type: 'separator' },
         { role: 'quit', label: 'Завершить CreoMaker' }
       ]
-    }] : [{
+    }] : []),
+    {
       label: 'Файл',
       submenu: [
+        // The page owns these shortcuts (they also work in the browser build); the menu only shows them.
+        { label: 'Добавить файлы…', accelerator: 'CmdOrCtrl+O', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click();document.getElementById('cm-add-inputs')?.click()") },
+        { label: 'Создать видео', accelerator: 'CmdOrCtrl+Enter', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click();['cm-run','cm-queue'].map(id=>document.getElementById(id)).find(b=>b&&!b.hidden&&!b.disabled)?.click()") },
+        { label: 'Прослушать с музыкой', accelerator: 'P', registerAccelerator: false, click: page("document.getElementById('cm-play-mix')?.click()") },
+        { type: 'separator' },
         { label: 'Папка вывода креативов…', click: clickChangeDir },
         { label: 'Открыть папку вывода', click: clickOpenDir },
-        { type: 'separator' },
-        { label: 'Проверить обновления…', click: clickUpdate },
-        { type: 'separator' },
-        { role: 'quit', label: 'Выход' }
+        ...(isMac ? [] : [
+          { type: 'separator' },
+          { label: 'Проверить обновления…', click: clickUpdate },
+          { type: 'separator' },
+          { role: 'quit', label: 'Выход' }
+        ])
       ]
-    }]),
+    },
     {
       label: 'Правка',
       submenu: [
@@ -205,6 +212,12 @@ function buildMenu() {
     {
       label: 'Вид',
       submenu: [
+        { label: 'Монтаж', accelerator: 'CmdOrCtrl+1', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click()") },
+        { label: 'Медиатека', accelerator: 'CmdOrCtrl+2', registerAccelerator: false, click: page("document.querySelector('[data-app-view=library]')?.click()") },
+        { label: 'Экспорт', accelerator: 'CmdOrCtrl+3', registerAccelerator: false, click: page("document.querySelector('[data-app-view=results]')?.click()") },
+        { type: 'separator' },
+        { label: 'Светлая / тёмная тема', click: page("document.getElementById('theme-toggle')?.click()") },
+        { type: 'separator' },
         { role: 'reload', label: 'Перезагрузить' },
         { role: 'toggleDevTools', label: 'Инструменты разработчика' },
         { type: 'separator' },
@@ -371,7 +384,7 @@ function createWindow() {
   });
   wc.on('will-navigate', (event, url) => {
     if (origin && url.startsWith(origin)) return;
-    if (url.startsWith('file:')) return;
+    // Never navigate away from the app (e.g. a file dropped outside the media bin): the page handles drops itself.
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
