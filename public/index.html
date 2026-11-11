@@ -1,68 +1,44 @@
 <!doctype html>
-<html lang="ru" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CreoMaker Studio</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff4757'/%3E%3Cstop offset='100%25' stop-color='%23c72939'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='8' y='23.5' fill='white' font-size='22' font-weight='800' font-family='sans-serif'%3EC%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/creo.css">
-<script defer src="/ui-icons.js"></script><script defer src="/creo-profiles.js"></script><script defer src="/media-metadata.js"></script><script defer src="/countries.js"></script><script defer src="/standalone.js"></script><script defer src="/creo.js"></script>
+<html lang="ru" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CreoMaker</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff4757'/%3E%3Cstop offset='100%25' stop-color='%23c72939'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='8' y='23.5' fill='white' font-size='22' font-weight='800' font-family='sans-serif'%3EC%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/base.css"><link rel="stylesheet" href="/creo.css"><link rel="stylesheet" href="/studio.css">
+<script defer src="/ui-icons.js"></script><script defer src="/creo-profiles.js"></script><script defer src="/media-metadata.js"></script><script defer src="/countries.js"></script><script defer src="/standalone.js"></script><script defer src="/creo.js"></script><script defer src="/shell.js"></script>
 </head><body>
-<header class="standalone-bar">
- <h1 class="standalone-brand"><span>C</span>CreoMaker<small>Локальная медиа-студия</small></h1>
- <div class="standalone-bar-right">
-  <span class="pill" id="cm-ffmpeg">Локальный обработчик</span>
-  <span id="cm-saved" class="cm-saved hint" role="status">Автосохранение</span>
-  <button type="button" id="cm-update-btn" class="button small quiet cm-update-btn" title="Проверить обновления на GitHub"><span data-icon="refresh"></span><span id="cm-update-label">Проверить обновления</span></button>
-  <button id="theme-toggle" class="icon-button" aria-label="Переключить тему" title="Переключить тему оформления"><span data-icon="moon"></span></button>
+<div class="app" id="app" data-view="edit">
+<header class="titlebar standalone-bar" id="titlebar">
+ <div class="tb-left">
+  <button type="button" id="app-menu-btn" class="tb-icon" aria-label="Меню приложения" title="Меню" hidden><span data-icon="menu"></span></button>
+  <span class="tb-logo" aria-hidden="true">C</span>
+  <h1 class="tb-title standalone-brand">CreoMaker</h1>
+ </div>
+ <div class="tb-center">
+  <div class="cm-modes tb-modes" role="group" aria-label="Режим обработки">
+   <button type="button" data-cm-mode="clean" class="active" aria-pressed="true" title="Clean3 · форматы кадра, размытие зон, музыка и хвосты"><span data-icon="crop"></span><span>Подготовка</span></button>
+   <button type="button" data-cm-mode="unique" aria-pressed="false" title="Пакет · уникализация видео и фото со стилями и фильтрами"><span data-icon="layers"></span><span>Варианты</span></button>
+  </div>
+ </div>
+ <div class="tb-right">
+  <button type="button" id="cm-undo" class="tb-icon" aria-label="Отменить последнее изменение" data-tooltip="Отменить · Ctrl+Z" title="Отменить · Ctrl+Z" disabled><span data-icon="undo"></span></button>
+  <button type="button" id="cm-update-btn" class="tb-icon cm-update-btn" title="Проверить обновления"><span data-icon="refresh"></span><span id="cm-update-label" class="sr-only">Проверить обновления</span></button>
+  <button type="button" id="theme-toggle" class="tb-icon" aria-label="Переключить тему" title="Светлая / тёмная тема"><span data-icon="moon"></span></button>
  </div>
 </header>
+<div class="app-body">
+ <nav class="rail" aria-label="Разделы">
+  <button type="button" class="rail-btn active" data-app-view="edit" aria-pressed="true" title="Монтаж · Ctrl+1"><span data-icon="film"></span><span class="rail-label">Монтаж</span></button>
+  <button type="button" class="rail-btn" data-app-view="library" aria-pressed="false" title="Библиотека хвостов и музыки · Ctrl+2"><span data-icon="music"></span><span class="rail-label">Медиатека</span></button>
+  <button type="button" class="rail-btn" data-app-view="results" aria-pressed="false" title="Очередь и результаты · Ctrl+3"><span data-icon="tasks"></span><span class="rail-label">Экспорт</span><span class="rail-badge" id="rail-jobs-badge" hidden></span></button>
+  <span class="rail-spacer"></span>
+  <button type="button" class="rail-btn" id="rail-output" title="Открыть папку вывода"><span data-icon="folder"></span><span class="rail-label">Папка</span></button>
+ </nav>
+
 <main class="standalone-main"><section id="creo-view" class="view">
- <header class="view-heading cm-heading">
-  <div class="cm-heading-main">
-   <div class="cm-modes" role="group" aria-label="Режим обработки">
-    <button type="button" data-cm-mode="clean" class="active" aria-pressed="true">
-     <svg class="cm-mode-vec" viewBox="0 0 64 46" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="61" height="43" rx="8" fill="currentColor" fill-opacity="0.03" stroke="currentColor" stroke-opacity="0.14"/>
-      <rect x="10" y="8" width="26" height="19" rx="3" stroke="currentColor" stroke-opacity="0.32" stroke-width="1.2" stroke-dasharray="2.5 2"/>
-      <rect x="17" y="6" width="12" height="23" rx="2.5" stroke="currentColor" stroke-opacity="0.75" stroke-width="1.4"/>
-      <rect x="39" y="9" width="15" height="15" rx="2.5" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.2"/>
-      <path d="M12 36h40" stroke="currentColor" stroke-opacity="0.2" stroke-width="1.2" stroke-linecap="round"/>
-      <path d="M20 36h18" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"/>
-      <circle cx="20" cy="36" r="2" fill="var(--accent)"/>
-      <circle cx="38" cy="36" r="2" fill="var(--accent)"/>
-     </svg>
-     <span class="cm-mode-icon" data-icon="crop"></span>
-     <span class="cm-mode-copy">
-      <em class="cm-mode-badge">Режим 1 · Clean3</em>
-      <strong>Подготовить видео</strong>
-      <small>Форматы кадра, размытие зон, музыка и хвосты</small>
-     </span>
-    </button>
-    <button type="button" data-cm-mode="unique" aria-pressed="false">
-     <svg class="cm-mode-vec" viewBox="0 0 64 46" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="61" height="43" rx="8" fill="currentColor" fill-opacity="0.03" stroke="currentColor" stroke-opacity="0.14"/>
-      <rect x="13" y="13" width="22" height="22" rx="3.5" stroke="currentColor" stroke-opacity="0.24" stroke-width="1.2"/>
-      <rect x="21" y="10" width="22" height="22" rx="3.5" stroke="currentColor" stroke-opacity="0.45" stroke-width="1.3"/>
-      <rect x="29" y="7" width="22" height="22" rx="3.5" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.78" stroke-width="1.4"/>
-      <path d="M34 22c3-2 5-8 8-8s4 3 6-1" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M14 38h36" stroke="currentColor" stroke-opacity="0.2" stroke-width="1.2" stroke-linecap="round"/>
-     </svg>
-     <span class="cm-mode-icon" data-icon="layers"></span>
-     <span class="cm-mode-copy">
-      <em class="cm-mode-badge">Режим 2 · Пакет</em>
-      <strong>Сделать варианты</strong>
-      <small>Уникализация видео и фото со стилями и фильтрами</small>
-     </span>
-    </button>
-   </div>
-  </div>
-  <div class="view-actions cm-heading-tools">
-   <button type="button" id="cm-undo" class="icon-button" aria-label="Отменить последнее изменение" data-tooltip="Отменить · Ctrl+Z" disabled><span data-icon="undo"></span></button>
-  </div>
- </header>
+  <span id="cm-status" class="sr-only" role="status" aria-live="polite"></span>
 
- <span id="cm-status" class="sr-only" role="status" aria-live="polite"></span>
-
+ <div class="app-view view-edit">
  <div class="cm-workbench">
   <aside class="panel cm-sources" id="cm-drop" aria-labelledby="cm-sources-title">
    <div class="panel-heading">
-    <h2 id="cm-sources-title"><span class="cm-step" aria-hidden="true">1</span>Файлы</h2>
+    <h2 id="cm-sources-title">Медиа</h2>
     <div class="cm-panel-head-right">
      <button type="button" id="cm-toggle-all-files" class="cm-text-button" hidden>Все</button>
      <span id="cm-input-count" class="pill" hidden>0 выбрано</span>
@@ -87,7 +63,7 @@
 
   <section class="panel cm-editor" id="cm-editor" data-compact-preview="closed" aria-labelledby="cm-editor-title">
    <div class="panel-heading">
-    <h2 id="cm-editor-title"><span class="cm-step" aria-hidden="true">2</span>Предпросмотр</h2>
+    <h2 id="cm-editor-title">Просмотр</h2>
     <span id="cm-selected-name" class="cm-selected-name"></span>
     <button type="button" id="cm-preview-toggle" class="icon-button" aria-controls="cm-stage" aria-expanded="false" aria-label="Показать предпросмотр" title="Показать предпросмотр"><span data-icon="chevron"></span></button>
    </div>
@@ -158,7 +134,7 @@
 
   <section class="panel cm-settings" id="cm-settings-panel" aria-labelledby="cm-settings-title">
    <div class="panel-heading">
-    <h2 id="cm-settings-title"><span class="cm-step" aria-hidden="true">3</span>Выход</h2>
+    <h2 id="cm-settings-title">Экспорт</h2>
     <span id="cm-mode-indicator" class="pill">Форматы и слои</span>
    </div>
    <div class="cm-copy-control" id="cm-copy-control" hidden>
@@ -249,6 +225,23 @@
       <details id="cm-pro-settings" class="cm-disclosure cm-fold"><summary><span data-icon="ai"></span>Профессиональные эффекты</summary><div id="cm-pro-fields" class="cm-fields"></div><p class="hint" data-ui-help>Текстура смешивается с кадром в режиме мягкого света. 0 отключает эффект, гамма 1 — нейтральная. Частота кадров: 0 или 12–60. Отражение переворачивает надписи. Фильтры работают на CPU; кодирование может использовать GPU. Предпросмотр показывает эффекты, случайные параметры копий будут отличаться.</p></details>
      </details>
     </section>
+    <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки (меню)</summary><div class="cm-advanced-body">
+    <details class="cm-disclosure cm-fold" id="cm-clean-extra"><summary><span data-icon="expand"></span>Кадр и длительность хвостов</summary>
+     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="grain"></span><span>Лёгкий шум</span></span><input id="cm-noise" type="checkbox" checked></label>
+     <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="1800" value="60"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>
+    </details>
+    <details class="cm-fold cm-disclosure" id="cm-naming"><summary><span data-icon="tag"></span>Имена файлов</summary><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="tag"></span><span>Метка в имени</span></span><input id="cm-name-tag" type="text" maxlength="32" placeholder="Например, PT_v2" autocomplete="off"></label><p class="hint">Пример: <code id="cm-name-example"></code></p><p class="hint">Каждая задача пишет в свою папку, поэтому прошлые результаты не перезаписываются.</p></details>
+    <details class="cm-fold cm-verification-settings cm-disclosure"><summary><span data-icon="check"></span>Изменения и проверка</summary>
+     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="waveform"></span><span>Изменять изображение и звук</span></span><input id="cm-signal-change" type="checkbox" data-cm-setting="signalChange" checked></label>
+     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="tasks"></span><span>Проверять каждый результат</span></span><input id="cm-verify-results" type="checkbox" data-cm-setting="verifyResults" checked></label>
+     <div id="cm-verification-fields" class="cm-fields"></div>
+     <p class="hint">Для уникализации и хвостов. Авто FPS выбирает другую частоту. Отчёт сравнивает SHA-256, теги, кадры, спектр и уровни звука по выборкам.</p>
+    </details>
+    <details class="cm-metadata-settings cm-fold cm-disclosure"><summary><span data-icon="globe"></span>Метаданные и регион</summary><label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="report"></span><span>Перезаписать метаданные результата</span></span><input id="cm-metadata" type="checkbox" checked></label><div class="cm-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="globe"></span><span>Страна</span></span><select id="cm-country" aria-label="Страна метаданных"><option value="">Без региона</option><option value="PT">PT · Португалия</option><option value="BG">BG · Болгария</option><option value="CZ">CZ · Чехия</option><option value="SK">SK · Словакия</option><option value="SI">SI · Словения</option><option value="GR">GR · Греция</option></select></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="type"></span><span>Название</span></span><input id="cm-metadata-title" type="text" maxlength="150" placeholder="Необязательно"></label></div><button type="button" id="cm-meta-generate" class="button small"><span data-icon="repeat"></span>Сгенерировать EN</button><p id="cm-meta-status" class="hint" role="status"></p><details id="cm-meta-details" class="cm-disclosure"><summary>Все поля метаданных</summary><div id="cm-meta-fields"></div></details>
+   </details>
+    <details class="cm-gpu-settings cm-fold cm-disclosure"><summary><span data-icon="gpu"></span>Кодирование (GPU / CPU)</summary><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="gpu"></span><span>Кодировщик</span></span><select id="cm-acceleration"><option value="auto">Авто · аппаратное ускорение в приоритете</option><option value="apple">Apple · VideoToolbox (M1/M2/M3/M4/Intel)</option><option value="nvidia">NVIDIA · NVENC</option><option value="amd">AMD · AMF</option><option value="intel">Intel · Quick Sync</option><option value="cpu">Процессор · x264</option></select></label><button type="button" id="cm-detect-gpu" class="button small quiet"><span data-icon="gpu"></span>Проверить ускорение</button><p id="cm-hardware" class="hint">Кодирование и доступное декодирование — GPU. Монтажные фильтры, звук и изображения — CPU.</p></details>
+    <details class="cm-quality-details cm-fold cm-disclosure"><summary><span data-icon="chart"></span>Качество и нагрузка</summary><button type="button" id="cm-apply-max-speed" class="button small" style="width:100%;margin-bottom:10px;"><span data-icon="zap"></span>Включить максимальную скорость</button><div id="cm-quality" class="cm-fields"></div><label class="cm-setting-row cm-setting-toggle" id="cm-bitrate-row"><span class="cm-setting-label"><span data-icon="chart"></span><span>Фиксированный битрейт для Clean3</span></span><input id="cm-bitrate-enabled" type="checkbox"></label><label id="cm-bitrate-field" class="cm-setting-row"><span class="cm-setting-label"><span data-icon="tracker"></span><span>Битрейт, кбит/с</span></span><input id="cm-bitrate" type="number" min="10000" max="15000" step="100" value="12000"></label><p class="hint" data-ui-help>Потоки процессора: 0 — авто (все ядра для максимальной скорости). При аппаратном ускорении (Apple VideoToolbox / NVIDIA / AMD) рендеринг ускоряется в 10–20 раз.</p></details>
+   </div></details>
    </div>
    <div class="cm-launch">
     <div class="cm-launch-summary"><strong id="cm-estimate"></strong><span id="cm-plan-line" class="hint"></span></div>
@@ -261,25 +254,12 @@
     <p id="cm-run-feedback" class="cm-run-feedback" role="status"></p>
     <p id="cm-run-reason" class="cm-run-reason" aria-live="polite"></p>
    </div>
-   <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки (меню)</summary><div class="cm-advanced-body">
-    <details class="cm-disclosure cm-fold" id="cm-clean-extra"><summary><span data-icon="expand"></span>Кадр и длительность хвостов</summary>
-     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="grain"></span><span>Лёгкий шум</span></span><input id="cm-noise" type="checkbox" checked></label>
-     <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="1800" value="60"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>
-    </details>
-    <details class="cm-fold cm-disclosure" id="cm-naming"><summary><span data-icon="tag"></span>Имена файлов</summary><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="tag"></span><span>Метка в имени</span></span><input id="cm-name-tag" type="text" maxlength="32" placeholder="Например, PT_v2" autocomplete="off"></label><p class="hint">Пример: <code id="cm-name-example"></code></p><p class="hint">Каждая задача пишет в свою папку, поэтому прошлые результаты не перезаписываются.</p></details>
-    <details class="cm-fold cm-verification-settings cm-disclosure"><summary><span data-icon="check"></span>Изменения и проверка</summary>
-     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="waveform"></span><span>Изменять изображение и звук</span></span><input id="cm-signal-change" type="checkbox" data-cm-setting="signalChange" checked></label>
-     <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="tasks"></span><span>Проверять каждый результат</span></span><input id="cm-verify-results" type="checkbox" data-cm-setting="verifyResults" checked></label>
-     <div id="cm-verification-fields" class="cm-fields"></div>
-     <p class="hint">Для уникализации и хвостов. Авто FPS выбирает другую частоту. Отчёт сравнивает SHA-256, теги, кадры, спектр и уровни звука по выборкам.</p>
-    </details>
-    <details class="cm-metadata-settings cm-fold cm-disclosure"><summary><span data-icon="globe"></span>Метаданные и регион</summary><label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="report"></span><span>Перезаписать метаданные результата</span></span><input id="cm-metadata" type="checkbox" checked></label><div class="cm-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="globe"></span><span>Страна</span></span><select id="cm-country" aria-label="Страна метаданных"><option value="">Без региона</option><option value="PT">PT · Португалия</option><option value="BG">BG · Болгария</option><option value="CZ">CZ · Чехия</option><option value="SK">SK · Словакия</option><option value="SI">SI · Словения</option><option value="GR">GR · Греция</option></select></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="type"></span><span>Название</span></span><input id="cm-metadata-title" type="text" maxlength="150" placeholder="Необязательно"></label></div><button type="button" id="cm-meta-generate" class="button small"><span data-icon="repeat"></span>Сгенерировать EN</button><p id="cm-meta-status" class="hint" role="status"></p><details id="cm-meta-details" class="cm-disclosure"><summary>Все поля метаданных</summary><div id="cm-meta-fields"></div></details></details>
-    <details class="cm-gpu-settings cm-fold cm-disclosure"><summary><span data-icon="gpu"></span>Кодирование (GPU / CPU)</summary><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="gpu"></span><span>Кодировщик</span></span><select id="cm-acceleration"><option value="auto">Авто · аппаратное ускорение в приоритете</option><option value="apple">Apple · VideoToolbox (M1/M2/M3/M4/Intel)</option><option value="nvidia">NVIDIA · NVENC</option><option value="amd">AMD · AMF</option><option value="intel">Intel · Quick Sync</option><option value="cpu">Процессор · x264</option></select></label><button type="button" id="cm-detect-gpu" class="button small quiet"><span data-icon="gpu"></span>Проверить ускорение</button><p id="cm-hardware" class="hint">Кодирование и доступное декодирование — GPU. Монтажные фильтры, звук и изображения — CPU.</p></details>
-    <details class="cm-quality-details cm-fold cm-disclosure"><summary><span data-icon="chart"></span>Качество и нагрузка</summary><button type="button" id="cm-apply-max-speed" class="button small" style="width:100%;margin-bottom:10px;"><span data-icon="zap"></span>Включить максимальную скорость</button><div id="cm-quality" class="cm-fields"></div><label class="cm-setting-row cm-setting-toggle" id="cm-bitrate-row"><span class="cm-setting-label"><span data-icon="chart"></span><span>Фиксированный битрейт для Clean3</span></span><input id="cm-bitrate-enabled" type="checkbox"></label><label id="cm-bitrate-field" class="cm-setting-row"><span class="cm-setting-label"><span data-icon="tracker"></span><span>Битрейт, кбит/с</span></span><input id="cm-bitrate" type="number" min="10000" max="15000" step="100" value="12000"></label><p class="hint" data-ui-help>Потоки процессора: 0 — авто (все ядра для максимальной скорости). При аппаратном ускорении (Apple VideoToolbox / NVIDIA / AMD) рендеринг ускоряется в 10–20 раз.</p></details>
-   </div></details>
   </section>
  </div>
 
+ </div>
+ <div class="app-view view-library">
+ <header class="view-header"><div><h2>Медиатека</h2><p class="hint">Видеохвосты и музыка, которые CreoMaker подклеивает к роликам. Отмеченные дорожки попадают в экспорт.</p></div></header>
  <details id="cm-library" class="panel cm-library cm-disclosure">
   <summary><h2 id="cm-library-title"><span data-icon="music"></span>Библиотека хвостов и фоновой музыки</h2></summary>
   <div class="cm-library-body">
@@ -313,10 +293,12 @@
    </div>
   </div>
  </details>
+ </div>
 
+ <div class="app-view view-results">
  <section class="panel cm-delivery" hidden id="cm-delivery" aria-labelledby="cm-delivery-title">
   <div class="cm-section-title">
-   <div><h2 id="cm-delivery-title"><span class="cm-step" aria-hidden="true">4</span>Результаты и задачи</h2></div>
+   <div><h2 id="cm-delivery-title">Результаты и задачи</h2></div>
    <div class="button-row cm-delivery-tools">
     <button type="button" id="cm-clear-jobs" class="button small quiet" title="Очистить список завершённых задач"><span data-icon="trash"></span>Очистить список</button>
     <span id="cm-queue-count" class="pill" hidden></span>
@@ -353,6 +335,13 @@
    </div>
   </div>
  </section>
+ <div class="results-empty">
+  <span class="results-empty-icon" data-icon="tasks" aria-hidden="true"></span>
+  <strong>Очередь пуста</strong>
+  <p class="hint">Выберите файлы в разделе «Монтаж» и нажмите «Создать видео». Задачи и готовые файлы появятся здесь.</p>
+  <button type="button" class="button small" data-goto-view="edit"><span data-icon="film"></span>Перейти к монтажу</button>
+ </div>
+ </div>
 
  <dialog id="cm-player-dialog" class="modal cm-player-modal" aria-labelledby="cm-player-name"><div class="dialog-heading"><h2 id="cm-player-name">Предпросмотр</h2><button type="button" id="cm-player-compare" class="button small quiet" aria-pressed="false" hidden>Показать исходник</button><button type="button" id="cm-player-close" class="icon-button" aria-label="Закрыть предпросмотр"><span data-icon="close"></span></button></div><div class="cm-player-box"><video id="cm-player" controls preload="none" playsinline hidden></video><img id="cm-player-image" alt="Готовый результат" hidden></div><p id="cm-player-meta" class="hint"></p></dialog>
  <dialog id="cm-copy-count-dialog" aria-labelledby="cm-copy-count-title"><form id="cm-copy-count-form"><h2 id="cm-copy-count-title">Количество копий</h2><label>На каждый исходник (от 1 до 50)<input id="cm-copy-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" required></label><div class="button-row"><button type="submit" class="button primary">Применить</button><button type="button" id="cm-copy-count-cancel" class="button quiet">Отмена</button></div></form></dialog>
@@ -375,7 +364,16 @@
    <button type="button" id="cm-dir-cancel-btn" class="button quiet">Отмена</button>
   </div>
  </dialog>
- <footer class="cm-footer"><span class="hint">Локальная студия CreoMaker</span><span class="cm-footer-right"><span id="cm-root-path" class="cm-path" title="Папка сохранения результатов"></span><button type="button" id="cm-footer-change-dir" class="cm-text-button" title="Изменить папку вывода">Сменить</button></span></footer>
  <div id="cm-toasts" class="cm-toast-container" aria-live="polite" aria-atomic="true"></div>
  <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
-</section></main></body></html>
+</section></main>
+</div>
+<footer class="statusbar cm-footer" id="statusbar">
+ <span class="sb-item" id="cm-ffmpeg">Локальный обработчик</span>
+ <span class="sb-item sb-saved cm-saved" id="cm-saved" role="status">Автосохранение</span>
+ <button type="button" class="sb-item sb-job" id="sb-job" hidden title="Открыть очередь"><span class="sb-job-label" id="sb-job-label"></span><span class="sb-meter"><i id="sb-job-meter"></i></span></button>
+ <span class="sb-spacer"></span>
+ <span class="sb-item sb-path"><span data-icon="folder"></span><span id="cm-root-path" class="cm-path" title="Папка сохранения результатов"></span><button type="button" id="cm-footer-change-dir" class="cm-text-button" title="Изменить папку вывода">Сменить</button></span>
+</footer>
+</div>
+</body></html>

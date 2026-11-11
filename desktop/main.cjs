@@ -236,6 +236,65 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+
+/* ---------- Native window chrome ---------- */
+const CHROME = {
+  dark: { bg: '#1c1c1e', overlay: '#1c1c1e', symbol: '#d4d4d8' },
+  light: { bg: '#ececee', overlay: '#ececee', symbol: '#3f3f46' }
+};
+const TITLEBAR_H = 40;
+let chromeTheme = 'dark';
+
+function windowStateFile() { return path.join(app.getPath('userData'), 'window-state.json'); }
+function readWindowState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(windowStateFile(), 'utf8'));
+    if (!s || !Number.isFinite(s.width) || !Number.isFinite(s.height)) return null;
+    const visible = screen.getAllDisplays().some(d => {
+      const a = d.workArea;
+      return Number.isFinite(s.x) && Number.isFinite(s.y) && s.x < a.x + a.width - 80 && s.x + s.width > a.x + 80 && s.y >= a.y - 10 && s.y < a.y + a.height - 80;
+    });
+    return visible ? s : { width: s.width, height: s.height, maximized: s.maximized };
+  } catch { return null; }
+}
+function saveWindowState() {
+  if (!mainWindow || SELFTEST_DIR) return;
+  try {
+    const maximized = mainWindow.isMaximized();
+    const b = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+    fs.writeFileSync(windowStateFile(), JSON.stringify({ ...b, maximized }));
+  } catch {}
+}
+
+function applyChromeTheme(theme) {
+  chromeTheme = theme === 'light' ? 'light' : 'dark';
+  const c = CHROME[chromeTheme];
+  if (!mainWindow) return;
+  try { mainWindow.setBackgroundColor(c.bg); } catch {}
+  if (!isMac) {
+    try { mainWindow.setTitleBarOverlay({ color: c.overlay, symbolColor: c.symbol, height: TITLEBAR_H }); } catch {}
+  }
+}
+
+function editContextMenu(params) {
+  const items = [];
+  if (params.isEditable) {
+    items.push(
+      { role: 'undo', label: 'Отменить', enabled: params.editFlags.canUndo },
+      { role: 'redo', label: 'Повторить', enabled: params.editFlags.canRedo },
+      { type: 'separator' },
+      { role: 'cut', label: 'Вырезать', enabled: params.editFlags.canCut },
+      { role: 'copy', label: 'Копировать', enabled: params.editFlags.canCopy },
+      { role: 'paste', label: 'Вставить', enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', label: 'Выбрать всё' }
+    );
+  } else if (params.selectionText && params.selectionText.trim()) {
+    items.push({ role: 'copy', label: 'Копировать' });
+  }
+  if (items.length) Menu.buildFromTemplate(items).popup({ window: mainWindow });
+}
+
 let ipcRegistered = false;
 function registerIPC() {
   if (ipcRegistered) return;
@@ -252,26 +311,42 @@ function registerIPC() {
   ipcMain.handle('shell:open-path', async (_event, p) => {
     if (p) await shell.openPath(p);
   });
+  ipcMain.handle('window:set-theme', (_event, theme) => { applyChromeTheme(theme); });
+  ipcMain.handle('window:show-menu', (_event, pos) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu || !mainWindow) return;
+    menu.popup({ window: mainWindow, x: Math.round(pos?.x || 8), y: Math.round(pos?.y || TITLEBAR_H) });
+  });
+  ipcMain.handle('window:toggle-maximize', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize();
+  });
 }
 
 function createWindow() {
   registerIPC();
-  let winW = 1380, winH = 820;
+  let winW = 1440, winH = 880;
   try {
     const primary = screen?.getPrimaryDisplay?.();
     if (primary?.workAreaSize) {
-      winW = Math.min(1380, Math.max(1024, primary.workAreaSize.width - 40));
-      winH = Math.min(840, Math.max(660, primary.workAreaSize.height - 40));
+      winW = Math.min(1440, Math.max(1100, primary.workAreaSize.width - 40));
+      winH = Math.min(900, Math.max(680, primary.workAreaSize.height - 40));
     }
   } catch {}
+  const saved = SELFTEST_DIR ? null : readWindowState();
+  const c = CHROME[chromeTheme];
   mainWindow = new BrowserWindow({
-    width: winW,
-    height: winH,
-    minWidth: 1024,
-    minHeight: 640,
+    width: saved?.width || winW,
+    height: saved?.height || winH,
+    ...(Number.isFinite(saved?.x) ? { x: saved.x, y: saved.y } : {}),
+    minWidth: 1100,
+    minHeight: 680,
     show: false,
-    title: 'CreoMaker Studio',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#07090e' : '#e9edf6',
+    title: 'CreoMaker',
+    backgroundColor: c.bg,
+    ...(isMac
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: c.overlay, symbolColor: c.symbol, height: TITLEBAR_H } }),
     autoHideMenuBar: !isMac,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -281,6 +356,11 @@ function createWindow() {
       spellcheck: false
     }
   });
+  if (saved?.maximized) mainWindow.maximize();
+  for (const ev of ['resize', 'move']) {
+    let t; mainWindow.on(ev, () => { clearTimeout(t); t = setTimeout(saveWindowState, 400); });
+  }
+  mainWindow.on('close', saveWindowState);
   mainWindow.once('ready-to-show', () => { if (!SELFTEST_DIR || process.env.CREOMAKER_SELFTEST_SHOW !== '0') mainWindow.show(); });
   mainWindow.on('closed', () => { mainWindow = null; });
 
@@ -295,6 +375,8 @@ function createWindow() {
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
+  wc.on('context-menu', (_e, params) => editContextMenu(params));
+  wc.on('did-finish-load', () => { try { wc.setVisualZoomLevelLimits(1, 1); } catch {} });
   wc.on('render-process-gone', (_e, details) => log('Renderer gone:', details.reason));
   wc.on('console-message', (event) => {
     const level = event.level ?? '';

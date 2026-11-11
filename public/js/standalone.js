@@ -32,10 +32,15 @@
     if (isMac) document.documentElement.classList.add('is-mac');
     for (const element of document.querySelectorAll('[data-icon]')) element.innerHTML = UIIcons.icon(element.dataset.icon);
     const theme = document.getElementById('theme-toggle');
+    const applyTheme = value => {
+      document.documentElement.dataset.theme = value;
+      try { window.creoDesktop?.setTheme?.(value); } catch {}
+    };
     const savedTheme = await CreoWorkspaceStore.getSetting('theme').catch(() => null);
-    document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    // A professional media tool defaults to the dark workspace; the light theme stays one click away.
+    applyTheme(savedTheme === 'light' ? 'light' : 'dark');
     theme.addEventListener('click', async () => {
-      document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
       await CreoWorkspaceStore.setting('theme', document.documentElement.dataset.theme);
     });
     const refresh = () => CreoMaker.refreshLibrary().catch(() => {});

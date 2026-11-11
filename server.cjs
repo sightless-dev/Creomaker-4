@@ -41,6 +41,8 @@ const files = new Map([
   ['/', ['public/index.html', 'text/html']],
   ['/base.css', ['public/css/base.css', 'text/css']],
   ['/creo.css', ['public/css/creo.css', 'text/css']],
+  ['/studio.css', ['public/css/studio.css', 'text/css']],
+  ['/shell.js', ['public/js/shell.js', 'text/javascript']],
   ['/standalone.js', ['public/js/standalone.js', 'text/javascript']],
   ['/creo.js', ['public/js/creo.js', 'text/javascript']],
   ['/ui-icons.js', ['public/js/ui-icons.js', 'text/javascript']],
