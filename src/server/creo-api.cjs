@@ -138,8 +138,27 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    .finally(async()=>{active=null;await persistJob(job).catch(()=>{});broadcast(job);drain();});
  }
  function drain(){if(active||starting||previewBusy||!queue.length)return;const next=queue.shift();startJob(next.job,next.request,next.folder);persistJob(next.job).catch(()=>{});for(const q of queue)broadcast(q.job);}
+ /* UI files that may be newer than the running server.cjs. After an in-app update only src/ is hot-reloaded;
+    server.cjs (and its static file list) stays the old one until the app restarts. This module is reloaded,
+    so it serves any UI stylesheet/script/page the old list does not know — otherwise new UI files 404 and
+    the updated interface is broken until a restart. */
+ async function serveUiFile(req,res,url){
+  if(!['GET','HEAD'].includes(req.method))return false;
+  const m=/^\/([\w-]+)\.(css|js|html)$/.exec(url.pathname);if(!m)return false;
+  const dirs={css:['public/css'],js:['public/js','src/shared'],html:['public']}[m[2]];
+  for(const dir of dirs){
+   const file=path.join(root,dir,m[1]+'.'+m[2]);
+   const stat=await fsp.stat(file).catch(()=>null);if(!stat?.isFile())continue;
+   const type={css:'text/css',js:'text/javascript',html:'text/html'}[m[2]];
+   if(m[1]==='macos-guide')res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+   res.writeHead(200,{'Content-Type':type,'Content-Length':stat.size,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY'});
+   if(req.method==='HEAD')res.end();else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
+   return true;
+  }
+  return false;
+ }
  async function handle(req,res,url){
-  if(!url.pathname.startsWith('/api/creo/'))return false;
+  if(!url.pathname.startsWith('/api/creo/'))return url.pathname==='/'?false:serveUiFile(req,res,url);
   try{
    await ready;
    const origin='http://'+req.headers.host;
