@@ -150,8 +150,11 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    const file=path.join(root,dir,m[1]+'.'+m[2]);
    const stat=await fsp.stat(file).catch(()=>null);if(!stat?.isFile())continue;
    const type={css:'text/css',js:'text/javascript',html:'text/html'}[m[2]];
-   if(m[1]==='macos-guide')res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
-   res.writeHead(200,{'Content-Type':type,'Content-Length':stat.size,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY'});
+   if(m[1]==='macos-guide')res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+   const etag='"'+stat.size.toString(36)+'-'+Math.floor(stat.mtimeMs).toString(36)+'"';
+   const common={'Cache-Control':'no-cache',ETag:etag,'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY'};
+   if(req.headers['if-none-match']===etag){res.writeHead(304,common).end();return true;}
+   res.writeHead(200,{...common,'Content-Type':type,'Content-Length':stat.size});
    if(req.method==='HEAD')res.end();else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
    return true;
   }

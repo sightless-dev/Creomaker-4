@@ -96,6 +96,7 @@ paths.scissors='<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path
 paths.spinner='<path d="M12 3a9 9 0 1 0 9 9"/>';
 paths.flag='<path d="M5 21V4m0 0h11l-2 4 2 4H5"/>';
 paths.repeat='<path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/>';
+paths.link='<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>';
 paths.drag='<path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"/>';Object.freeze(paths);
 function icon(name){const markup=Object.hasOwn(paths,name)?paths[name]:paths.vault;return '<svg class="ui-icon studio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+markup+'</svg>';}
 window.UIIcons=Object.freeze({icon,names:Object.freeze(Object.keys(paths))});

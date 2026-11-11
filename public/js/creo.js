@@ -46,15 +46,14 @@
    if (toast.classList.contains('is-leaving')) return;
    toast.classList.add('is-leaving');
    clearTimeout(timer);
-   setTimeout(() => {
-    toast.remove();
-    if (activeToast === toast) activeToast = null;
-   }, 220);
+   if (activeToast === toast) activeToast = null;
+   setTimeout(() => toast.remove(), 220);
   };
   const startTimer = (ms) => {
    clearTimeout(timer);
    timer = setTimeout(dismiss, ms);
   };
+  toast.dismiss = dismiss;
   toast.restartTimer = startTimer;
   toast.querySelector('.cm-toast-close')?.addEventListener('click', (e) => {
    e.stopPropagation();
@@ -66,6 +65,9 @@
   container.appendChild(toast);
   activeToast = toast;
  }
+ function clearToast() {
+  activeToast?.dismiss?.();
+ }
  const status = (text, error = false) => {
   const el = $('cm-status');
   if (el) {
@@ -74,6 +76,8 @@
   }
   if (text && text.trim()) {
    showToast(text, error);
+  } else {
+   clearToast();
   }
  };
  const on=(id,event,fn)=>{const el=$(id);if(!el)return;el.addEventListener(event,e=>{try{Promise.resolve(fn(e)).catch(err=>status(err.message,true));}catch(err){status(err.message,true);}});};
@@ -213,6 +217,7 @@
   $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();syncTailPills();
   const ind=$('cm-mode-indicator');if(ind)ind.textContent=unique?'Стили и копии':'Форматы и слои';
   for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=unique;
+  syncPresetSectionVisibility();
   $('creo-view').dataset.cmMode=workspace.settings.mode;renderFiles();updateStage();updateNameExample();updateEstimate();
  }
 
@@ -247,12 +252,13 @@
  });
 
  /* ---------- User presets ---------- */
+ function syncPresetSectionVisibility(){const section=$('cm-preset-options');if(section)section.hidden=workspace.settings.mode!=='unique'&&!(workspace.userPresets||[]).length&&!presetFormMode;}
  function renderPresets(){const list=workspace.userPresets||[],sel=$('cm-user-preset'),chosen=list.find(p=>p.id===workspace.activePreset)?workspace.activePreset:'';
   sel.innerHTML='<option value="">— не выбран —</option>'+list.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${p.settings.mode==='unique'?'уник.':'Clean3'}${p.library?' · слои':''}</option>`).join('');sel.value=chosen;
   const has=!!chosen;
   $('cm-preset-bar').hidden=!list.length;$('cm-preset-manage').hidden=!has;
   for(const id of ['cm-preset-apply','cm-preset-update','cm-preset-rename','cm-preset-delete'])$(id).disabled=!has||!!presetFormMode;
-  presetState();}
+  syncPresetSectionVisibility();presetState();}
  function presetState(){const match=matchedPreset(),active=(workspace.userPresets||[]).find(p=>p.id===workspace.activePreset);
   $('cm-preset-state').textContent=active&&match?.id!==active.id?'Настройки отличаются от выбранного пресета.':'';}
  function openPresetForm(mode){presetFormMode=mode;const active=workspace.userPresets.find(p=>p.id===workspace.activePreset);$('cm-preset-form').hidden=false;$('cm-preset-error').textContent='';
@@ -668,9 +674,10 @@
  async function close(){$('cm-meta-status').textContent='';$('cm-meta-fields').replaceChildren();
   uploadController?.abort();if(importTask)await importTask.catch(()=>{});if(opening)await opening.catch(()=>{});setVisible(false);if(!loaded&&!token)return;if(loaded)await persist().catch(()=>{});source?.close();
   if(token)await api('session',{method:'DELETE'}).catch(()=>{});token=null;previewSerial++;timelineCache.clear();sourceCache.clear();history.clear();sessionStorage.removeItem('creoToken');loaded=false;current=null;media=[];jobs=[];refs.clear();workspace=blankWorkspace();closePresetForm();closeCopyPanel();
-  for(const id of ['cm-files','cm-results','cm-jobs','cm-log','cm-zones','cm-tails-list','cm-music-list','cm-tailMusic-list','cm-plan-list','cm-plan-warnings','cm-user-preset'])$(id).replaceChildren();
-  for(const id of ['cm-original','cm-player','cm-frame','cm-original-image','cm-player-image','cm-timeline','cm-source-frame'])$(id).removeAttribute('src');$('cm-player-image').hidden=true;$('cm-player').hidden=true;
-  for(const id of ['cm-selected-name','cm-player-name','cm-output-path','cm-root-path','cm-progress-label','cm-status','cm-job-title','cm-job-meta','cm-job-error','cm-preset-state','cm-run-reason','cm-active-label'])$(id).textContent='';
+  for(const id of ['cm-files','cm-results','cm-jobs','cm-log','cm-zones','cm-tails-list','cm-music-list','cm-tailMusic-list','cm-plan-list','cm-plan-warnings','cm-user-preset'])$(id)?.replaceChildren();
+  for(const id of ['cm-original','cm-player','cm-frame','cm-original-image','cm-player-image','cm-timeline','cm-source-frame'])$(id)?.removeAttribute('src');if($('cm-player-image'))$('cm-player-image').hidden=true;if($('cm-player'))$('cm-player').hidden=true;
+  for(const id of ['cm-selected-name','cm-player-name','cm-output-path','cm-root-path','cm-progress-label','cm-status','cm-job-title','cm-job-error','cm-preset-state','cm-run-reason','cm-active-label']){const el=$(id);if(el)el.textContent='';}
+  clearToast();
   $('cm-launch-progress').hidden=true;runFeedback();updateStage();renderJobs();}
 
  /* ---------- Event wiring ---------- */
