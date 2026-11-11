@@ -80,7 +80,7 @@
     </svg>
     <div class="cm-empty-copy">
      <span data-icon="film" aria-hidden="true" class="cm-empty-badge-icon"></span>
-     <strong>Добавьте файл для предпросмотра</strong>
+     <strong id="cm-empty-title">Добавьте файл для предпросмотра</strong>
      <div class="cm-empty-Action">
       <button type="button" id="cm-empty-pick" class="button small primary"><span data-icon="plus"></span>Выбрать файлы с ПК</button>
      </div>
@@ -219,13 +219,13 @@
      <p id="cm-preset-state" class="hint" aria-live="polite"></p>
      <form id="cm-preset-form" class="cm-preset-form" hidden novalidate><label><span id="cm-preset-form-title">Название пресета</span><input id="cm-preset-name" type="text" maxlength="60" required autocomplete="off"></label><label class="checkbox-label" id="cm-preset-library-label"><input id="cm-preset-library" type="checkbox"> Вместе с выбранными хвостами и музыкой</label><p id="cm-preset-error" class="cm-field-error" role="alert"></p><div class="button-row"><button type="submit" id="cm-preset-confirm" class="button small primary">Сохранить</button><button type="button" id="cm-preset-cancel" class="button small quiet">Отмена</button></div></form>
      <details id="cm-unique-settings" class="cm-disclosure cm-fold" hidden>
-      <summary><span data-icon="sliders"></span>Эффекты вариантов (тонкая настройка)</summary>
+      <summary><span data-icon="sliders"></span>Тонкая настройка эффектов</summary>
       <div id="cm-unique-fields" class="cm-fields"></div>
       <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="flip"></span><span>Случайное отражение по горизонтали</span></span><input id="cm-flip" type="checkbox" checked></label>
       <details id="cm-pro-settings" class="cm-disclosure cm-fold"><summary><span data-icon="ai"></span>Профессиональные эффекты</summary><div id="cm-pro-fields" class="cm-fields"></div><p class="hint" data-ui-help>Текстура смешивается с кадром в режиме мягкого света. 0 отключает эффект, гамма 1 — нейтральная. Частота кадров: 0 или 12–60. Отражение переворачивает надписи. Фильтры работают на CPU; кодирование может использовать GPU. Предпросмотр показывает эффекты, случайные параметры копий будут отличаться.</p></details>
      </details>
     </section>
-    <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки (меню)</summary><div class="cm-advanced-body">
+    <details class="cm-disclosure cm-advanced" id="cm-advanced"><summary><span data-icon="sliders"></span>Дополнительные настройки</summary><div class="cm-advanced-body">
     <details class="cm-disclosure cm-fold" id="cm-clean-extra"><summary><span data-icon="expand"></span>Кадр и длительность хвостов</summary>
      <label class="cm-setting-row cm-setting-toggle"><span class="cm-setting-label"><span data-icon="grain"></span><span>Лёгкий шум</span></span><input id="cm-noise" type="checkbox" checked></label>
      <div class="cm-fields" id="cm-tail-fields"><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="clock"></span><span>Длина хвостов, с</span></span><input id="cm-tail-seconds" type="number" min="1" max="1800" value="60"></label><label class="cm-setting-row"><span class="cm-setting-label"><span data-icon="fade"></span><span>Затухание, с</span></span><input id="cm-fade" type="number" min="0" max="8" step="0.1" value="1.5"></label></div>

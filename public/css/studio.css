@@ -595,3 +595,56 @@
 #creo-view .cm-tail-duration-header label { margin: 0; }
 .cm-tail-duration-header { align-items: center; }
 .view-library .cm-tracks { max-height: calc(100vh - 330px); }
+
+/* ==========================================================================
+   Polish pass
+   ========================================================================== */
+/* Timeline: quiet track, clear in/out range instead of a solid red box */
+.cm-timeline-wrap { background: #18181a; }
+.cm-timeline-wrap:has(#cm-timeline[hidden])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 39px, rgba(255, 255, 255, 0.05) 39px 40px);
+}
+.cm-trim-range {
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent), inset -3px 0 0 var(--accent), inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
+}
+
+/* One scroll container per panel: no nested scroll boxes inside the inspector */
+.cm-settings #cm-unique-fields,
+.cm-settings #cm-pro-fields { max-height: none; overflow: visible; padding-right: 0; }
+.cm-settings-scroll { scrollbar-gutter: stable; padding-right: 6px; }
+
+/* Preset tiles: no mid-word breaks */
+.cm-style-presets { gap: 6px; }
+.cm-style-preset { padding: 6px 8px 6px 6px; gap: 8px; }
+.cm-style-preset strong { font-size: 11.5px; font-weight: 600; overflow-wrap: normal; word-break: normal; hyphens: auto; }
+.cm-profile-vec { width: 30px; height: 30px; }
+
+/* Setting rows: compact, right-aligned values */
+#creo-view .cm-setting-row > input:not([type=checkbox]),
+#creo-view .cm-setting-row > select { min-height: 26px; height: 26px; padding-top: 0; padding-bottom: 0; }
+#creo-view .cm-setting-row > input[type=number] { text-align: right; }
+
+/* Dialogs: close button at the edge, actions aligned right like native dialogs */
+#creo-view .dialog-heading h2 { margin-right: auto; }
+#creo-view dialog .button-row:last-child,
+#creo-view .cm-dir-actions,
+#creo-view .cm-plan-actions { justify-content: flex-end; margin-top: 14px; }
+#creo-view dialog label { font-weight: 500; color: var(--text-2); }
+
+/* Source actions never wrap */
+#cm-restore-list { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-flex; justify-content: center; }
+
+/* Toasts: neutral info icon, red only for errors */
+.cm-toast-icon { color: var(--status-info); }
+.cm-toast.is-error .cm-toast-icon { color: var(--danger); }
+#creo-view #cm-unique-fields input,
+#creo-view #cm-pro-fields input,
+#creo-view #cm-pro-fields select { min-height: 26px; height: 26px; padding-top: 0; padding-bottom: 0; }
+#creo-view #cm-unique-fields input[type=number],
+#creo-view #cm-pro-fields input[type=number] { text-align: right; }

@@ -103,7 +103,7 @@
   --s5: 16px;
   --titlebar-h: 40px;
   --statusbar-h: 24px;
-  --rail-w: 56px;
+  --rail-w: 64px;
   --topbar-h: 0px;
   --sidebar-w: 0px;
   --control-h: 28px;
@@ -542,7 +542,7 @@ dialog h2 { font-size: 13px; font-weight: 600; }
   display: grid;
   justify-items: center;
   gap: 4px;
-  width: 48px;
+  width: 56px;
   padding: 7px 0 6px;
   border: 0;
   border-radius: var(--r);
@@ -551,7 +551,7 @@ dialog h2 { font-size: 13px; font-weight: 600; }
   transition: background-color 0.12s, color 0.12s;
 }
 .rail-btn .ui-icon { width: 18px; height: 18px; }
-.rail-label { font-size: 9.5px; font-weight: 500; line-height: 1; }
+.rail-label { font-size: 9.5px; font-weight: 500; line-height: 1; white-space: nowrap; }
 .rail-btn:hover { color: var(--text); background: var(--hover); }
 .rail-btn.active { color: var(--text); background: var(--surface-2); }
 .rail-btn.active::before {

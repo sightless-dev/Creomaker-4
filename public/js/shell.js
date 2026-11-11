@@ -70,10 +70,30 @@
         desktop.showMenu({ x: r.left, y: r.bottom + 2 });
       });
     }
-    $('titlebar')?.addEventListener('dblclick', e => {
-      if (e.target.closest('button, input, select, a')) return;
-      if (platform === 'darwin') desktop?.toggleMaximize?.();
-    });
+    /* ---------- Native tooltips for icon-only controls ---------- */
+    const tooltip = el => {
+      if (!el.title && el.dataset.tooltip) el.title = el.dataset.tooltip;
+      else if (!el.title && el.matches('button') && !el.textContent.trim() && el.getAttribute('aria-label')) el.title = el.getAttribute('aria-label');
+    };
+    document.querySelectorAll('[data-tooltip], button[aria-label]').forEach(tooltip);
+    new MutationObserver(records => {
+      for (const r of records) for (const n of r.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        if (n.matches('[data-tooltip], button[aria-label]')) tooltip(n);
+        n.querySelectorAll?.('[data-tooltip], button[aria-label]').forEach(tooltip);
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+
+    /* ---------- Viewer empty state: guide to the bin when files are already loaded ---------- */
+    const bin = $('cm-drop'), emptyTitle = $('cm-empty-title');
+    const syncEmpty = () => {
+      if (!bin || !emptyTitle) return;
+      emptyTitle.textContent = bin.classList.contains('is-empty')
+        ? 'Добавьте файл для предпросмотра'
+        : 'Выберите файл в панели «Медиа»';
+    };
+    if (bin) new MutationObserver(syncEmpty).observe(bin, { attributes: true, attributeFilter: ['class'] });
+    syncEmpty();
 
     /* ---------- Status bar: running job + queue badge ---------- */
     const badge = $('rail-jobs-badge');
