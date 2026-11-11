@@ -20,11 +20,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: desktop-build
+  group: desktop-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   release:
+    # Only main publishes to the desktop-latest release; other branches build artifacts only.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Ensure desktop-latest pre-release exists
@@ -38,6 +40,7 @@ jobs:
 
   mac:
     needs: release
+    if: ${{ always() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +91,7 @@ jobs:
           ditto -c -k selftest "selftest-macOS-${{ matrix.arch }}.zip"
 
       - name: Upload to desktop-latest release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -108,6 +112,7 @@ jobs:
 
   windows:
     needs: release
+    if: ${{ always() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:
@@ -143,6 +148,7 @@ jobs:
           Compress-Archive -Path selftest -DestinationPath "selftest-Windows-x64.zip"
 
       - name: Upload to desktop-latest release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
