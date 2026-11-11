@@ -523,7 +523,9 @@ dialog h2 { font-size: 13px; font-weight: 600; }
 .app-body {
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+  overflow: hidden;
 }
 
 .rail {

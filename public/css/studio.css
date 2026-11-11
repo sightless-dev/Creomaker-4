@@ -570,10 +570,14 @@
    Overlays
    ========================================================================== */
 .cm-toast-container {
-  left: auto;
-  right: 16px;
-  bottom: calc(var(--statusbar-h) + 12px);
-  max-width: 380px;
+  top: calc(var(--titlebar-h) + 44px);
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: center;
+  max-width: 420px;
 }
 .cm-toast {
   padding: 9px 12px;
@@ -584,3 +588,10 @@
   box-shadow: var(--overlay-shadow);
   backdrop-filter: none;
 }
+
+/* The status bar reuses the legacy footer class; neutralise its page-flow spacing. */
+.statusbar.cm-footer { margin: 0; justify-content: flex-start; gap: 2px; font-size: 11px; line-height: 1; }
+
+#creo-view .cm-tail-duration-header label { margin: 0; }
+.cm-tail-duration-header { align-items: center; }
+.view-library .cm-tracks { max-height: calc(100vh - 330px); }
