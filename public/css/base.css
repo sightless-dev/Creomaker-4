@@ -428,11 +428,15 @@ dialog h2 { font-size: 13px; font-weight: 600; }
   padding: 0 8px 0 10px;
   background: var(--chrome);
   border-bottom: 1px solid var(--divider);
-  -webkit-app-region: drag;
 }
-.titlebar button, .titlebar input, .titlebar select { -webkit-app-region: no-drag; }
-.is-desktop.platform-darwin .titlebar { padding-left: 84px; }
-.is-desktop:not(.platform-darwin) .titlebar { padding-right: 146px; }
+/* Window dragging only exists in the redesigned desktop shell (custom frame). Only the bare title bar strip
+   is a drag region; every control in it and everything below it is explicitly no-drag, so no OS hit-test
+   quirk (macOS especially) can ever swallow clicks meant for the app. */
+.has-custom-frame .titlebar { -webkit-app-region: drag; }
+.has-custom-frame .titlebar :is(button, input, select, a, [role=group]),
+.has-custom-frame :is(.app-body, .rail, .statusbar, dialog) { -webkit-app-region: no-drag; }
+.has-custom-frame.platform-darwin .titlebar { padding-left: 84px; }
+.has-custom-frame:not(.platform-darwin) .titlebar { padding-right: 146px; }
 
 .tb-left, .tb-right { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .tb-right { justify-content: flex-end; }

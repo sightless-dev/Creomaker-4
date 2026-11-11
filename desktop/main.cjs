@@ -62,7 +62,12 @@ async function ensureCode() {
     const meta = await readJSON(path.join(target, '.update-meta.json'));
     const updatedAt = Date.parse(meta?.updatedAt || '');
     const bundleTime = Date.parse(bundleInfo.commitTime || '');
-    if (meta?.commitSha && meta.commitSha === bundleInfo.commitSha || (updatedAt && bundleTime && updatedAt > bundleTime)) {
+    // updatedAt is when the in-app updater ran, not when that code was written, so a time comparison alone
+    // could keep an older UI after installing a newer app version. A newer bundled version always wins.
+    const installedVersion = (await readJSON(path.join(target, 'package.json')))?.version || '0';
+    const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+    const bundleIsNewer = newer(bundleInfo.version || '0', installedVersion);
+    if (!bundleIsNewer && (meta?.commitSha && meta.commitSha === bundleInfo.commitSha || (updatedAt && bundleTime && updatedAt > bundleTime))) {
       await fsp.writeFile(path.join(target, '.desktop-bundle.json'), JSON.stringify(bundleInfo, null, 2));
       log('Keeping installed code (same or newer than bundle).');
       return target;

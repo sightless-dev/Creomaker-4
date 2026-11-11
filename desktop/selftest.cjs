@@ -143,6 +143,17 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
       for (const v of ['library', 'results', 'edit']) { window.CreoShell.showView(v); await new Promise(r => setTimeout(r, 150)); out[v] = { edit: vis('.view-edit'), library: vis('.view-library'), results: vis('.view-results') }; }
       return out;
     })()`);
+    // Real mouse clicks (through Chromium hit-testing, not element.click()) on every rail button.
+    const railClicks = {};
+    for (const v of ['library', 'results', 'edit']) {
+      const c = await js(`(() => { const b = document.querySelector('.rail-btn[data-app-view=${v}]').getBoundingClientRect(); return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }; })()`);
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: c.x, y: c.y });
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: c.x, y: c.y, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: c.x, y: c.y, button: 'left', clickCount: 1 });
+      await sleep(400);
+      railClicks[v] = await js("document.getElementById('app').dataset.view");
+    }
+    check('Rail buttons respond to real mouse clicks', railClicks.library === 'library' && railClicks.results === 'results' && railClicks.edit === 'edit', JSON.stringify(railClicks));
     check('Workspace views switch', views.library.library && !views.library.edit && views.results.results && !views.results.edit && views.edit.edit && !views.edit.library, JSON.stringify(views));
 
     // 5b. "Listen with video": upload a generated clip and a music track through the real UI, then play the mix.

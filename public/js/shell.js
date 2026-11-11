@@ -8,6 +8,9 @@
   const platform = desktop?.platform || (/mac/i.test(navigator.platform || navigator.userAgent) ? 'darwin' : 'win32');
 
   root.classList.add(desktop?.isDesktop ? 'is-desktop' : 'is-browser', 'platform-' + platform);
+  // Only the 1.2+ desktop shell draws a frameless window (it exposes `platform`). Code updated in-app inside an
+  // older shell keeps the native title bar, so it must not get drag regions or traffic-light padding.
+  if (desktop?.isDesktop && desktop.platform) root.classList.add('has-custom-frame');
 
   document.addEventListener('DOMContentLoaded', () => {
     const app = $('app');
