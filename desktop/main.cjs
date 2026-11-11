@@ -160,7 +160,14 @@ async function startServer(codeDir, port) {
 }
 
 function buildMenu() {
-  const page = js => () => mainWindow?.webContents.executeJavaScript(js).catch(() => {});
+  // userGesture=true: menu commands count as a user action, so e.g. the file picker is allowed to open.
+  const page = js => () => mainWindow?.webContents.executeJavaScript(js, true).catch(() => {});
+  // Windows: the page owns the shortcut and the menu only displays it (registerAccelerator:false).
+  // macOS ignores registerAccelerator, so there the menu owns Cmd shortcuts and the page skips them
+  // (see shell.js); plain-key hints like "P" are not shown on macOS so typing is never intercepted.
+  const keys = (accelerator) => isMac
+    ? (/CmdOrCtrl/.test(accelerator) ? { accelerator } : {})
+    : { accelerator, registerAccelerator: false };
   const clickUpdate = () => mainWindow?.webContents.executeJavaScript("document.getElementById('cm-update-btn')?.click()").catch(() => {});
   const clickChangeDir = () => mainWindow?.webContents.executeJavaScript("window.changeOutputDir?.()").catch(() => {});
   const clickOpenDir = () => mainWindow?.webContents.executeJavaScript("window.openOutputDir?.()").catch(() => {});
@@ -182,10 +189,9 @@ function buildMenu() {
     {
       label: 'Файл',
       submenu: [
-        // The page owns these shortcuts (they also work in the browser build); the menu only shows them.
-        { label: 'Добавить файлы…', accelerator: 'CmdOrCtrl+O', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click();document.getElementById('cm-add-inputs')?.click()") },
-        { label: 'Создать видео', accelerator: 'CmdOrCtrl+Enter', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click();['cm-run','cm-queue'].map(id=>document.getElementById(id)).find(b=>b&&!b.hidden&&!b.disabled)?.click()") },
-        { label: 'Прослушать с музыкой', accelerator: 'P', registerAccelerator: false, click: page("document.getElementById('cm-play-mix')?.click()") },
+        { label: 'Добавить файлы…', ...keys('CmdOrCtrl+O'), click: page('window.CreoShell?.addFiles()') },
+        { label: 'Создать видео', ...keys('CmdOrCtrl+Enter'), click: page('window.CreoShell?.run()') },
+        { label: 'Прослушать с музыкой', ...keys('P'), click: page('window.CreoShell?.playMix()') },
         { type: 'separator' },
         { label: 'Папка вывода креативов…', click: clickChangeDir },
         { label: 'Открыть папку вывода', click: clickOpenDir },
@@ -212,9 +218,9 @@ function buildMenu() {
     {
       label: 'Вид',
       submenu: [
-        { label: 'Монтаж', accelerator: 'CmdOrCtrl+1', registerAccelerator: false, click: page("document.querySelector('[data-app-view=edit]')?.click()") },
-        { label: 'Медиатека', accelerator: 'CmdOrCtrl+2', registerAccelerator: false, click: page("document.querySelector('[data-app-view=library]')?.click()") },
-        { label: 'Экспорт', accelerator: 'CmdOrCtrl+3', registerAccelerator: false, click: page("document.querySelector('[data-app-view=results]')?.click()") },
+        { label: 'Монтаж', ...keys('CmdOrCtrl+1'), click: page("window.CreoShell?.showView('edit')") },
+        { label: 'Медиатека', ...keys('CmdOrCtrl+2'), click: page("window.CreoShell?.showView('library')") },
+        { label: 'Экспорт', ...keys('CmdOrCtrl+3'), click: page("window.CreoShell?.showView('results')") },
         { type: 'separator' },
         { label: 'Светлая / тёмная тема', click: page("document.getElementById('theme-toggle')?.click()") },
         { type: 'separator' },

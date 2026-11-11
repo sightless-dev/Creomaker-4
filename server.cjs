@@ -50,9 +50,12 @@ const files = new Map([
   ['/creo-profiles.js', ['src/shared/creo-profiles.js', 'text/javascript']],
   ['/media-metadata.js', ['src/shared/media-metadata.js', 'text/javascript']],
   ['/countries.js', ['src/shared/countries.js', 'text/javascript']],
-  ['/fonts/Inter-Variable.ttf', ['public/fonts/Inter-Variable.ttf', 'font/ttf']]
+  ['/fonts/Inter-Variable.ttf', ['public/fonts/Inter-Variable.ttf', 'font/ttf']],
+  ['/macos-guide.html', ['public/macos-guide.html', 'text/html']]
 ]);
 const csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+// The macOS install guide (Help menu) is a self-contained static page with its own inline styles and copy button.
+const guideCsp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 const server = http.createServer(async (req, res) => {
   if (req.headers.host !== '127.0.0.1:' + port) {
@@ -63,7 +66,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, origin);
     if (url.origin !== origin) return res.writeHead(403).end('Forbidden origin');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', csp);
+    res.setHeader('Content-Security-Policy', url.pathname === '/macos-guide.html' ? guideCsp : csp);
     if (url.pathname === '/api/health' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ service: 'CreoMaker', version, status: 'ok', port }));

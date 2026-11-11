@@ -54,22 +54,28 @@
     }
 
     /* ---------- Keyboard shortcuts ---------- */
-    const visibleButton = (...ids) => ids.map($).find(b => b && !b.hidden && !b.disabled && b.offsetParent !== null);
+    const visibleButton = (...ids) => ids.map($).find(b => b && !b.hidden && !b.disabled);
+    const modalOpen = () => !!document.querySelector('dialog[open]');
+    // One set of commands for keyboard, menu (desktop/main.cjs) and buttons.
+    const commands = {
+      showView,
+      addFiles() { if (modalOpen()) return; showView('edit'); $('cm-add-inputs')?.click(); },
+      run() { if (modalOpen()) return; showView('edit'); visibleButton('cm-run', 'cm-queue')?.click(); },
+      playMix() { if (modalOpen()) return; showView('edit'); $('cm-play-mix')?.click(); }
+    };
+    window.CreoShell = Object.freeze(commands);
+    // On macOS the desktop menu owns ⌘ shortcuts (Electron always registers them there); handling them here
+    // as well would run every command twice. Elsewhere (Windows, browser build) the page handles them.
+    const menuOwnsShortcuts = desktop?.isDesktop && platform === 'darwin';
     document.addEventListener('keydown', e => {
       const mod = platform === 'darwin' ? e.metaKey : e.ctrlKey;
-      if (!mod || e.altKey || e.shiftKey || e.repeat) return;
-      if (document.querySelector('dialog[open]')) return;
+      if (!mod || e.altKey || e.shiftKey || e.repeat || menuOwnsShortcuts) return;
+      if (modalOpen()) return;
       const idx = ['1', '2', '3'].indexOf(e.key);
       if (idx >= 0) { e.preventDefault(); showView(views[idx]); return; }
       const key = e.key.toLowerCase();
-      if (key === 'o' || key === 'щ') {            // Ctrl/Cmd+O: add files, like any desktop editor
-        e.preventDefault();
-        showView('edit');
-        $('cm-add-inputs')?.click();
-      } else if (e.key === 'Enter') {              // Ctrl/Cmd+Enter: start (or queue) the export
-        const run = visibleButton('cm-run', 'cm-queue');
-        if (run && app.dataset.view === 'edit') { e.preventDefault(); run.click(); }
-      }
+      if (key === 'o' || key === 'щ') { e.preventDefault(); commands.addFiles(); }          // add files
+      else if (e.key === 'Enter' && app.dataset.view === 'edit') { e.preventDefault(); commands.run(); } // export
     });
 
     /* ---------- Drag & drop anywhere ----------

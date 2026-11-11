@@ -675,3 +675,6 @@
 .cm-mix-name .ui-icon { color: var(--accent); width: 15px; height: 15px; }
 .cm-mix-row input[type=range] { width: 100%; }
 .cm-mix-row input[type=number] { height: 26px; min-height: 26px; text-align: right; padding: 0 6px; }
+
+/* Inline styles are blocked by the app's CSP, so layout that used style="" lives here */
+#cm-apply-max-speed { width: 100%; margin-bottom: 8px; }

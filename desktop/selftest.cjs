@@ -127,6 +127,67 @@ async function run({ app, win, outDir, origin, tools, codeDir, log, logLines, st
       await js("document.querySelectorAll('#cm-music-list [data-play-track]')[1].click()");
     }
 
+    // 5a. Desktop shell: native window chrome, workspace views, no CSP violations.
+    const shell = await js(`(() => {
+      const root = document.documentElement, bar = document.getElementById('titlebar'), cs = bar && getComputedStyle(bar);
+      return { desktop: root.classList.contains('is-desktop'), platform: [...root.classList].find(c => c.startsWith('platform-')),
+        commands: !!window.CreoShell, view: document.getElementById('app')?.dataset.view,
+        barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0, padL: cs ? parseFloat(cs.paddingLeft) : 0, padR: cs ? parseFloat(cs.paddingRight) : 0,
+        drag: cs ? cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region') : '' };
+    })()`);
+    const chromeOk = process.platform === 'darwin' ? shell.padL >= 80 : shell.padR >= 140;
+    check('Desktop shell · custom title bar', shell.desktop && shell.commands && shell.barH === 40 && shell.platform === 'platform-' + process.platform && chromeOk && shell.drag === 'drag', JSON.stringify(shell));
+    const views = await js(`(async () => {
+      const vis = s => { const el = document.querySelector(s); return !!el && el.getBoundingClientRect().height > 0; };
+      const out = {};
+      for (const v of ['library', 'results', 'edit']) { window.CreoShell.showView(v); await new Promise(r => setTimeout(r, 150)); out[v] = { edit: vis('.view-edit'), library: vis('.view-library'), results: vis('.view-results') }; }
+      return out;
+    })()`);
+    check('Workspace views switch', views.library.library && !views.library.edit && views.results.results && !views.results.edit && views.edit.edit && !views.edit.library, JSON.stringify(views));
+
+    // 5b. "Listen with video": upload a generated clip and a music track through the real UI, then play the mix.
+    try {
+      const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'creo-mix-'));
+      const clip = path.join(tmp, 'selftest-clip.mp4'), song = path.join(tmp, 'selftest-music.m4a');
+      execFileSync(tools.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=25:duration=5', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=5', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '64k', clip], { timeout: 60000 });
+      execFileSync(tools.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=660:duration=7', '-c:a', 'aac', '-b:a', '64k', song], { timeout: 60000 });
+      const put = (file, input) => js(`(() => {
+        const bin = atob(${JSON.stringify(fs.readFileSync(file).toString('base64'))}), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const dt = new DataTransfer(); dt.items.add(new File([bytes], ${JSON.stringify(path.basename(file))}));
+        const el = document.getElementById(${JSON.stringify(input)}); el.files = dt.files; el.dispatchEvent(new Event('change', { bubbles: true })); return true;
+      })()`);
+      const waitFor = async (expr, tries = 60) => { for (let i = 0; i < tries; i++) { if (await js(expr)) return true; await sleep(500); } return false; };
+      await js("window.CreoShell.showView('edit'); document.querySelector('[data-cm-mode=\"clean\"]')?.click()");
+      await put(clip, 'cm-pick-inputs');
+      const clipIn = await waitFor("[...document.querySelectorAll('#cm-files .cm-file-select')].some(b => /selftest-clip/.test(b.textContent))");
+      await put(song, 'cm-pick-music');
+      const songIn = await waitFor("[...document.querySelectorAll('#cm-music-list .cm-track-name')].some(n => /selftest-music/.test(n.textContent))");
+      check('Upload through the UI (video + music)', clipIn && songIn, JSON.stringify({ clipIn, songIn }));
+      await js("(() => { const m = document.getElementById('cm-music-mix'); if (m && !m.checked) m.click(); [...document.querySelectorAll('#cm-files .cm-file-select')].find(b => /selftest-clip/.test(b.textContent))?.click(); })()");
+      await sleep(2500);
+      await js("window.__selftestAudio = []; { const play = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function () { if (this.tagName === 'AUDIO') window.__selftestAudio.push(this); return play.call(this); }; } window.CreoShell.playMix()");
+      await sleep(3500);
+      const mixState = await js(`(() => {
+        const d = document.getElementById('cm-player-dialog'), v = document.getElementById('cm-player');
+        const a = (window.__selftestAudio || []).find(x => !x.paused);
+        return { open: d.open, rows: document.querySelectorAll('.cm-mix-row').length, vt: +v.currentTime.toFixed(2), vw: v.videoWidth, verr: v.error && v.error.code,
+          music: !!a, at: a ? +a.currentTime.toFixed(2) : null, focus: document.activeElement && document.activeElement.id };
+      })()`);
+      check('Listen with video · player opens with the music mixer', mixState.open && mixState.rows >= 1, JSON.stringify(mixState));
+      check('Listen with video · video decodes and plays', mixState.vw > 0 && mixState.vt > 0.3 && !mixState.verr, JSON.stringify(mixState));
+      check('Listen with video · music plays in sync', mixState.music && Math.abs(mixState.at - mixState.vt) < 0.6, JSON.stringify(mixState));
+      await shot('09-listen-with-video');
+      await js("document.getElementById('cm-player-close').click()");
+      await sleep(500);
+      const stopped = await js("!document.getElementById('cm-player-dialog').open && (window.__selftestAudio || []).every(a => a.paused)");
+      check('Listen with video · closing stops the music', stopped);
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch (e) { check('Listen with video', false, String(e.message).slice(0, 300)); }
+
+    const cspErrors = logLines.filter(l => /Content Security Policy/i.test(l));
+    check('No Content-Security-Policy violations', !cspErrors.length, cspErrors.slice(0, 2).join(' | ').slice(0, 300));
+
     // 6. Updater wiring (talks to GitHub).
     await js("window.confirm = () => false; window.scrollTo(0, 0); document.getElementById('cm-update-btn')?.click()");
     let upd = '';

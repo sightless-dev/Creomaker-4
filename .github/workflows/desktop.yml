@@ -4,10 +4,12 @@ name: Desktop build (macOS & Windows)
 # launches each package on real runner OS machines, runs the UI self-test
 # with screenshots and publishes everything to the "desktop-latest" release.
 # The media library (~1.2 GB) is downloaded on demand inside the application.
+# Feature branches (claude/**) build and test the same way but only upload workflow artifacts;
+# the macOS app is additionally self-tested on several macOS versions (mac-compat).
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths:
       - 'desktop/**'
       - 'public/**'
@@ -108,6 +110,64 @@ jobs:
         if: always()
         with:
           name: selftest-macOS-${{ matrix.arch }}
+          path: desktop/selftest
+
+      - name: Pack .app for the compatibility matrix
+        if: always()
+        run: |
+          APP="$(ls -d dist/mac*/CreoMaker.app | head -n 1)"
+          ditto -c -k --keepParent "$APP" "CreoMaker-app-${{ matrix.arch }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CreoMaker-app-${{ matrix.arch }}
+          path: desktop/CreoMaker-app-${{ matrix.arch }}.zip
+          retention-days: 7
+
+  # The same packaged app, launched and self-tested on every macOS version GitHub offers
+  # (Electron 37 supports macOS 11 Big Sur and newer; older runners are no longer available).
+  mac-compat:
+    needs: mac
+    if: ${{ always() && needs.mac.result != 'cancelled' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-14, arch: arm64 }
+          - { runner: macos-15, arch: arm64 }
+          - { runner: macos-26, arch: arm64 }
+          - { runner: macos-15-intel, arch: x64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: CreoMaker-app-${{ matrix.arch }}
+          path: desktop
+      - name: Self-test on ${{ matrix.runner }}
+        run: |
+          ditto -x -k "CreoMaker-app-${{ matrix.arch }}.zip" app
+          node scripts/run-selftest.cjs "app/CreoMaker.app/Contents/MacOS/CreoMaker"
+      - name: Summary
+        if: always()
+        run: |
+          mkdir -p selftest && sw_vers > selftest/system.txt && uname -m >> selftest/system.txt
+          { echo "### ${{ matrix.runner }} · $(sw_vers -productName) $(sw_vers -productVersion) · $(uname -m)"; echo;
+            node -e "const r=require('./selftest/report.json');for(const c of r.checks)console.log((c.pass?'✅':'❌')+' '+c.name);console.log('\n**OK = '+r.ok+'**')" 2>/dev/null || echo "❌ no report"; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-compat-${{ matrix.runner }}
           path: desktop/selftest
 
   windows:
