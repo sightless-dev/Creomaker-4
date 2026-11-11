@@ -210,6 +210,17 @@ async function checkUpdate(root) {
   };
 }
 
+/** 40-hex commit SHA from the ZIP end-of-central-directory comment (git archive / GitHub codeload), or ''. */
+function zipCommentSha(buf) {
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (buf.readUInt32LE(i) !== 0x06054b50) continue;
+    const len = buf.readUInt16LE(i + 20);
+    const comment = buf.subarray(i + 22, i + 22 + len).toString('latin1').trim();
+    return /^[0-9a-f]{40}$/i.test(comment) ? comment.toLowerCase() : '';
+  }
+  return '';
+}
+
 async function applyUpdate(root) {
   const { repo, branch, baseUrl } = getRepoConfig();
   let remoteSha = '';
@@ -222,6 +233,9 @@ async function applyUpdate(root) {
     ? `${baseUrl}/archive.zip`
     : `https://codeload.github.com/${repo}/zip/refs/heads/${branch}`;
   const zipBuf = await fetchBuffer(zipUrl, { timeout: 30000 });
+  // The GitHub API is rate-limited (60 requests/hour per IP without a token). GitHub's archive carries the
+  // commit SHA as the ZIP comment, so the installed commit is still recorded and later updates detected.
+  if (!remoteSha) remoteSha = zipCommentSha(zipBuf);
   const entries = extractZipBuffer(zipBuf);
   if (!entries.length || !entries.some(e => e.relPath === 'package.json')) {
     throw Error('Архив обновления с GitHub не содержит файлов приложения CreoMaker.');
