@@ -409,7 +409,36 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'splash.html'));
 }
 
+/** macOS: an app started straight from the mounted .dmg (or a quarantined Downloads copy) vanishes from
+    the Dock and is not in Applications once it quits or the disk image is ejected. Offer to move it. */
+function ensureInApplicationsFolder() {
+  if (!isMac || !app.isPackaged || SELFTEST_DIR) return false;
+  try {
+    if (app.isInApplicationsFolder()) return false;
+    const fromDmg = /^\/Volumes\//.test(process.execPath);
+    const choice = dialog.showMessageBoxSync({
+      type: 'question',
+      buttons: ['Переместить в «Программы»', 'Не сейчас'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'Переместить CreoMaker в папку «Программы»?',
+      detail: (fromDmg
+        ? 'CreoMaker запущен прямо с установочного образа (.dmg). После закрытия или извлечения образа программа пропадёт из Dock.'
+        : 'CreoMaker запущен не из папки «Программы».')
+        + ' После перемещения он перезапустится, а все ваши файлы, пресеты и результаты сохранятся.'
+    });
+    if (choice !== 0) return false;
+    // Replace an older copy that may already be in Applications.
+    return app.moveToApplicationsFolder({ conflictHandler: () => true });
+  } catch (error) {
+    log('Move to Applications failed:', error.message);
+    dialog.showErrorBox('CreoMaker', 'Не удалось переместить CreoMaker автоматически. Перетащите CreoMaker из окна установщика в папку «Программы» вручную.');
+    return false;
+  }
+}
+
 async function boot() {
+  if (ensureInApplicationsFolder()) return; // the app relaunches from Applications
   buildMenu();
   createWindow();
   try {
