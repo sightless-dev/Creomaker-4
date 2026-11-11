@@ -134,7 +134,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-14, arch: arm64 }
           - { runner: macos-15, arch: arm64 }
           - { runner: macos-26, arch: arm64 }
           - { runner: macos-15-intel, arch: x64 }
@@ -164,6 +163,15 @@ jobs:
           mkdir -p selftest && sw_vers > selftest/system.txt && uname -m >> selftest/system.txt
           { echo "### ${{ matrix.runner }} · $(sw_vers -productName) $(sw_vers -productVersion) · $(uname -m)"; echo;
             node -e "const r=require('./selftest/report.json');for(const c of r.checks)console.log((c.pass?'✅':'❌')+' '+c.name);console.log('\n**OK = '+r.ok+'**')" 2>/dev/null || echo "❌ no report"; } >> "$GITHUB_STEP_SUMMARY"
+          # Same result as annotations, so it is visible in the run overview and through the checks API.
+          node -e "
+            const os=require('child_process').execSync('sw_vers -productVersion').toString().trim();
+            let r; try { r=require('./selftest/report.json'); } catch { console.log('::error title=${{ matrix.runner }} macOS '+os+'::self-test report missing'); process.exit(0); }
+            const ok=r.checks.filter(c=>c.pass).length;
+            for (const c of r.checks.filter(c=>!c.pass)) console.log('::error title=${{ matrix.runner }} macOS '+os+'::'+c.name+' '+String(c.detail||'').slice(0,200));
+            if (r.error) console.log('::error title=${{ matrix.runner }} macOS '+os+'::'+String(r.error).split('\n')[0].slice(0,200));
+            console.log('::notice title=${{ matrix.runner }} macOS '+os+' '+process.arch+'::self-test '+ok+'/'+r.checks.length+' passed');
+          "
       - uses: actions/upload-artifact@v4
         if: always()
         with:
