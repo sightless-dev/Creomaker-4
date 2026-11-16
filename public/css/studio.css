@@ -470,7 +470,7 @@
 #cm-library > summary { display: none; }
 .cm-library-body { padding: 0 24px 24px; }
 .cm-library-body > .cm-section-title { margin: 0 0 12px; }
-.cm-layers-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cm-layers-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .cm-layers-grid > .panel {
   padding: 0 12px 8px;
   border: 1px solid var(--border);

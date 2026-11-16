@@ -57,3 +57,41 @@ test('Actual FFmpeg: clean formats, blur, all tails/music, images, unique videos
  const controller=new AbortController();controller.abort();await assert.rejects(engine.process(request,resolve,path.join(outRoot,'cancel'),{signal:controller.signal}),/остановлена/);assert.equal(crypto.createHash('sha256').update(await fs.readFile(entries[0].path)).digest('hex'),before);
  assert.equal(await fs.stat(path.join(outRoot,'clean','work')).catch(()=>null),null);
 });
+test('Actual FFmpeg: intro plays first with its own sound, music and tails start after it',{timeout:180000},async()=>{
+ await createFixtures();const engine=new Engine(root),outRoot=path.join(root,'test-results','creo-intro-'+crypto.randomUUID());await fs.mkdir(outRoot,{recursive:true});
+ const intro=path.join(outRoot,'intro-green.mp4'),silentIntro=path.join(outRoot,'intro-silent.mp4');
+ await engine.run('ffmpeg',['-y','-f','lavfi','-i','color=c=green:s=200x100:r=30:d=1','-f','lavfi','-i','sine=frequency=300:duration=1','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac','-shortest',intro]);
+ await engine.run('ffmpeg',['-y','-f','lavfi','-i','color=c=green:s=200x100:r=30:d=0.5','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p',silentIntro]);
+ const entries=[['source.mp4',path.join(fixtures,'source.mp4')],['tail-red.mp4',path.join(fixtures,'tail-red.mp4')],['music-0.wav',path.join(fixtures,'music-0.wav')],['music-2.wav',path.join(fixtures,'music-2.wav')],['intro.mp4',intro],['silent.mp4',silentIntro]].map(([name,file],i)=>({id:String(i),name,path:file}));
+ const resolve=id=>entries.find(e=>e.id===id);
+ const settings={formats:['1:1'],tailSeconds:1,fade:.2,preset:'ultrafast',crf:30,threads:1,signalChange:false,verifyResults:false,intro:true};
+ const request={settings,inputs:['0'],tails:['1'],intros:['4'],music:[{id:'2',volume:50}],tailMusic:[{id:'3',volume:50}],edits:{'0':{start:0,end:1}}};
+ const decode=args=>new Promise((ok,fail)=>{const p=spawn(engine.ffmpeg,['-hide_banner','-nostdin','-loglevel','error',...args],{windowsHide:true});const b=[];let err='';p.stdout.on('data',x=>b.push(x));p.stderr.on('data',x=>err+=x);p.on('error',fail);p.on('close',c=>c?fail(Error(err)):ok(Buffer.concat(b)));});
+ const pixel=(file,t)=>decode(['-ss',String(t),'-i',file,'-an','-frames:v','1','-vf','scale=1:1','-pix_fmt','rgb24','-f','rawvideo','pipe:1']);
+ const tones=async(file,t,d=.4)=>{const pcm=await decode(['-ss',String(t),'-i',file,'-t',String(d),'-vn','-ac','1','-ar','8000','-f','f32le','pipe:1']);
+  return hz=>{let a=0,b=0,n=pcm.length/4;for(let i=0;i<n;i++){const v=pcm.readFloatLE(i*4);a+=v*Math.cos(2*Math.PI*hz*i/8000);b+=v*Math.sin(2*Math.PI*hz*i/8000);}return Math.hypot(a,b)/n;};};
+ const check=async(file,{introSeconds,introTone,tails})=>{
+  const probe=await engine.probe(file);assert.equal(probe.width,720);assert.equal(probe.height,720);
+  assert.ok(Math.abs(probe.duration-(introSeconds+1+(tails?1:0)))<.2,'duration '+probe.duration);
+  const g=await pixel(file,introSeconds/2);assert.ok(g[1]>g[0]+40&&g[1]>g[2]+40,'intro frame must be green first');
+  const m=await pixel(file,introSeconds+.5);assert.ok(!(m[1]>m[0]+40&&m[1]>m[2]+40),'main video follows the intro');
+  const during=await tones(file,.05,Math.min(.4,introSeconds-.1));
+  if(introTone)assert.ok(during(300)>during(440)*10,'intro keeps its own sound');
+  assert.ok(during(440)<.002,'background music must not overlap the intro: '+during(440));
+  assert.ok(during(220)<.002,'main audio must not overlap the intro');
+  const main=await tones(file,introSeconds+.2);assert.ok(main(440)>.005,'music starts with the main video');assert.ok(main(220)>.005,'main audio follows the intro');assert.ok(main(880)<main(440)/10,'tail music waits for the tails');
+  if(tails){const r=await pixel(file,introSeconds+1.5);assert.ok(r[0]>r[2]+100,'tail follows main video');const t=await tones(file,introSeconds+1.3);assert.ok(t(880)>.005,'tail music plays over tails');}
+ };
+ const fast=await engine.process(request,resolve,path.join(outRoot,'fast'));
+ await check(path.join(outRoot,'fast',fast[0].name),{introSeconds:1,introTone:true,tails:true});
+ const onlyIntro=await engine.process({...request,settings:{...settings,tailmix:false}},resolve,path.join(outRoot,'only-intro'));
+ await check(path.join(outRoot,'only-intro',onlyIntro[0].name),{introSeconds:1,introTone:true,tails:false});
+ const silent=await engine.process({...request,intros:['5']},resolve,path.join(outRoot,'silent'));
+ await check(path.join(outRoot,'silent',silent[0].name),{introSeconds:.5,introTone:false,tails:true});
+ // The filter-graph fallback produces the same timeline.
+ engine.mixFast=async()=>{throw Error('forced fallback');};const warn=console.warn;console.warn=()=>{};
+ try{const legacy=await engine.process(request,resolve,path.join(outRoot,'legacy'));await check(path.join(outRoot,'legacy',legacy[0].name),{introSeconds:1,introTone:true,tails:true});}finally{console.warn=warn;}
+ await assert.rejects(engine.process({...request,intros:[]},resolve,path.join(outRoot,'missing')),/Начальная вставка/);
+ const off=await engine.process({...request,settings:{...settings,intro:false,tailmix:false}},resolve,path.join(outRoot,'off'));assert.ok(Math.abs(off[0].duration-1)<.2,'intro off leaves the video unchanged');
+ await fs.rm(outRoot,{recursive:true,force:true});
+});

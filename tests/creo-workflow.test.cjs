@@ -143,3 +143,17 @@ test('updater validates safe paths and applies zip update atomically without tou
   await fs.rm(tmpDir,{recursive:true,force:true});
  }
 });
+
+test('intro: setting, dry plan blocking and preset layers',()=>{
+ assert.equal(config().intro,false);assert.equal(config({intro:1}).intro,true);
+ const inputs=[{id:'v1',name:'one.mp4',duration:10}];
+ const missing=P.planBatch({settings:{mode:'clean',formats:['9:16'],tailmix:false,intro:true},inputs,intros:[]});
+ assert.equal(missing.blocking,true);assert.match(missing.warnings[0].text,/вставка/i);
+ assert.equal(P.planBatch({settings:{mode:'clean',formats:['9:16'],tailmix:false,intro:true},inputs,intros:['i1']}).blocking,false);
+ assert.equal(P.planBatch({settings:{mode:'unique',copies:1,intro:true},inputs,intros:[]}).blocking,false,'intro is a Clean3 layer only');
+ const p=P.createPreset([],{name:'With intro',settings:{...defaults,intro:true},library:{tails:[],intros:['i1','gone'],music:[],tailMusic:[]},id:'pi'});
+ assert.equal(p.settings.intro,true);assert.deepEqual(p.library.intros,['i1','gone']);
+ const r=P.applyPreset(defaults,p,id=>id!=='gone');assert.deepEqual(r.library.intros,['i1']);assert.equal(r.missing,1);
+ assert.throws(()=>P.normalizePreset({id:'x',name:'x',settings:{crf:1},library:{intros:['../x']}}));
+ assert.deepEqual(P.normalizePreset({id:'old',name:'old',settings:{crf:1},library:{tails:['t']}}).library.intros,[],'old presets stay valid');
+});

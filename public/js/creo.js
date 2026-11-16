@@ -6,13 +6,15 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
+ const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,intro:false,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
  const terminal=new Set(['completed','failed','cancelled','interrupted']);
  const rank=s=>terminal.has(s)?2:s==='running'?1:0;
- const blankWorkspace=()=>({settings:{...initial},selected:[],tails:[],music:[],tailMusic:[],edits:{},userPresets:[]});
+ /* Video layers stored as ordered id lists (tails at the end, intros at the start); audio layers carry a volume. */
+ const idKinds=new Set(['tails','intros']);
+ const blankWorkspace=()=>({settings:{...initial},selected:[],tails:[],intros:[],music:[],tailMusic:[],edits:{},userPresets:[]});
  let platform='win32',libraryRefresh;
  let token=null,opening=null,loaded=false,source=null,media=[],jobs=[],workspace=blankWorkspace(),current=null,selectedJob=null,saveTimer,previewSerial=0,busy=false,drag=null,visible=false,available=true;
  let frameReady=false,previewQueue=Promise.resolve(),previewTimer,importTask=null,uploadController=null,settingsDirty=false,presetFormMode=null;
@@ -100,7 +102,7 @@
  function save(){settingsDirty=true;clearTimeout(saveTimer);setSaved('Сохраняем…');saveTimer=setTimeout(()=>persist().catch(e=>status('Настройки не сохранены: '+e.message,true)),450);}
  function setSaved(text,error=false){$('cm-saved').textContent=text;$('cm-saved').classList.toggle('error',error);}
  async function persist(){clearTimeout(saveTimer);try{await workspaceStore.setting('creoWorkspace',structuredClone(workspace));}catch(e){setSaved('Не сохранено',true);throw e;}settingsDirty=false;setSaved('Сохранено');}
- const snapshot=()=>({settings:workspace.settings,selected:workspace.selected,tails:workspace.tails,music:workspace.music,tailMusic:workspace.tailMusic,edits:workspace.edits,hiddenInputs:workspace.hiddenInputs||[]});
+ const snapshot=()=>({settings:workspace.settings,selected:workspace.selected,tails:workspace.tails,intros:workspace.intros,music:workspace.music,tailMusic:workspace.tailMusic,edits:workspace.edits,hiddenInputs:workspace.hiddenInputs||[]});
  /** Records the state BEFORE a change. Repeated keyboard nudges with the same key within 1.5 s form one undo step. */
  function checkpoint(label,key=''){const now=Date.now();if(key&&lastCheckpoint.key===key&&now-lastCheckpoint.time<1500){lastCheckpoint.time=now;return;}lastCheckpoint={key,time:now};history.push(label,snapshot());updateUndo();}
  function updateUndo(){const b=$('cm-undo');b.disabled=!history.size||busyEditing();const label=history.peek();b.setAttribute('aria-label',label?'Отменить: '+label:'Отменить последнее изменение');b.dataset.tooltip=(label?'Отменить: '+label:'Нечего отменять')+' · Ctrl+Z';}
@@ -114,7 +116,7 @@
  const durationOf=m=>m?.probe?.duration;
  function edit(){if(!current?.probe)return null;const duration=current.probe.duration;const e=workspace.edits[current.id] ||= {start:0,end:duration,strength:18,zones:[],time:0};e.end=P.trimEnd(e.end,duration);return e;}
  const hasEdit=id=>{const e=workspace.edits[id],m=refs.get(id);if(!e)return false;const d=roundTime(durationOf(m));return e.zones?.length>0||roundTime(e.start)>0||(d&&roundTime(e.end)<d-.01);};
- function plan(){return P.planBatch({settings:workspace.settings,inputs:selectedMedia().map(m=>({id:m.id,name:m.name,image:isImage(m),duration:durationOf(m)})),edits:workspace.edits,tails:workspace.tails,music:workspace.music});}
+ function plan(){return P.planBatch({settings:workspace.settings,inputs:selectedMedia().map(m=>({id:m.id,name:m.name,image:isImage(m),duration:durationOf(m)})),edits:workspace.edits,tails:workspace.tails,intros:workspace.intros,music:workspace.music});}
  const matchedPreset=()=>P.matchUserPreset(workspace.settings,workspace.userPresets);
 
  /* ---------- Settings column ---------- */
@@ -187,7 +189,7 @@
   $('cm-signal-change').checked=s.signalChange;$('cm-verify-results').checked=s.verifyResults;
   $('cm-quality').innerHTML=number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v]))+number('threads','Потоков процессора (0 = авто)',0,32);
   $('cm-formats').innerHTML=Object.entries(formatLabels).map(([key,label])=>{const [w,h]=P.formats[key]||[];return `<label class="cm-format"><input type="checkbox" data-format="${key}" ${s.formats.includes(key)?'checked':''}><span class="cm-ratio" data-ratio="${key}" aria-hidden="true"></span><strong>${key}</strong><small>${label}</small><em class="cm-format-dim">${w}×${h}</em></label>`;}).join('');
-  $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
+  $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;if($('cm-intro'))$('cm-intro').checked=!!s.intro;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
   $('cm-unique-fields').innerHTML=[['uniqueNoise','Шум',0,15,1],['hue','Оттенок ±',0,10,.1],['saturation','Насыщенность',.95,1.1,.01],['contrast','Контраст',.95,1.1,.01],['brightness','Яркость',-.1,.1,.01],['speed','Скорость ± %',0,5,1],['jpeg','Качество JPEG',80,100,1],['zoom','Зум до %',0,5,.1],['rotate','Поворот ± °',0,5,.1],['blur','Размытие / резкость',0,5,.1],['pitch','Тон аудио ± %',0,30,1]].map(args=>number(...args)).join('');
   $('cm-copy-value').textContent=s.copies;syncCopyPills();$('cm-flip').checked=s.flip;$('cm-metadata').checked=s.metadata;$('cm-acceleration').value=s.acceleration||'auto';$('cm-name-tag').value=s.nameTag||'';
   $('cm-country').value=s.country;$('cm-metadata-title').value=s.metadataTitle;$('cm-meta-status').textContent='';metadataFields();
@@ -204,6 +206,7 @@
   const n=k=>workspace[k].length,seconds=s.tailSeconds;
   const length=seconds%60===0?seconds/60+' мин':seconds+' с';
   const parts=[];
+  if(!unique&&s.intro)parts.push(n('intros')?'Вставка в начале: '+n('intros'):'Вставка: 0');
   if(!unique)parts.push(s.tailmix?(n('tails')?'Хвосты '+length:'Хвосты: 0'):'Без хвостов');
   parts.push(musicOn?(off?'Только аудио: '+n('music'):'Музыка: '+n('music')):'Аудио выкл.');
   if(!unique&&s.tailmix&&musicOn&&n('tailMusic'))parts.push('для хвостов: '+n('tailMusic'));
@@ -212,7 +215,7 @@
   $('cm-name-example').textContent=P.outputName({index:0,name:m?.name||'ролик.mp4',target:unique?1:(s.formats[0]||'9:16'),mode:s.mode,image:unique&&isImage(m),tag:s.nameTag});}
  function updateMode(){const unique=workspace.settings.mode==='unique';
   document.querySelectorAll('[data-cm-mode]').forEach(b=>{const active=b.dataset.cmMode===workspace.settings.mode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
-  $('cm-copy-control').hidden=!unique;$('cm-clean-settings').hidden=unique;$('cm-tailmix-row').hidden=unique;$('cm-unique-settings').hidden=!unique;$('cm-library').hidden=false;$('cm-preview-format').closest('label').hidden=unique;
+  $('cm-copy-control').hidden=!unique;$('cm-clean-settings').hidden=unique;$('cm-tailmix-row').hidden=unique;if($('cm-intro-row'))$('cm-intro-row').hidden=unique;$('cm-unique-settings').hidden=!unique;$('cm-library').hidden=false;$('cm-preview-format').closest('label').hidden=unique;
   if($('cm-scale-box'))$('cm-scale-box').hidden=unique;
   $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();syncTailPills();
   const ind=$('cm-mode-indicator');if(ind)ind.textContent=unique?'Стили и копии':'Форматы и слои';
@@ -265,7 +268,7 @@
   $('cm-preset-form-title').textContent=mode==='rename'?'Новое название':'Название пресета';$('cm-preset-library-label').hidden=mode==='rename';$('cm-preset-library').checked=false;
   $('cm-preset-name').value=mode==='rename'?active?.name||'':'Пресет '+(workspace.userPresets.length+1);$('cm-preset-confirm').textContent=mode==='rename'?'Переименовать':'Сохранить';renderPresets();$('cm-preset-name').focus();$('cm-preset-name').select();}
  function closePresetForm(){presetFormMode=null;$('cm-preset-form').hidden=true;renderPresets();}
- const layers=()=>({tails:[...workspace.tails],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic)});
+ const layers=()=>({tails:[...workspace.tails],intros:[...workspace.intros],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic)});
  async function submitPresetForm(){const name=$('cm-preset-name').value;let list;
   try{if(presetFormMode==='rename')list=P.renamePreset(workspace.userPresets,workspace.activePreset,name);else{const p=P.createPreset(workspace.userPresets,{name,settings:workspace.settings,library:$('cm-preset-library').checked?layers():null});list=[...workspace.userPresets,p];workspace.activePreset=p.id;}}
   catch(e){$('cm-preset-error').textContent=e.message;$('cm-preset-name').setAttribute('aria-invalid','true');$('cm-preset-name').focus();return;}
@@ -273,8 +276,8 @@
   try{await persist();status(mode==='rename'?'Пресет переименован.':'Пресет «'+list.find(p=>p.id===workspace.activePreset).name+'» сохранён.');}catch(e){status('Пресет создан, но не сохранён на устройстве: '+e.message,true);}
  }
  function applyUserPreset(){const p=workspace.userPresets.find(x=>x.id===workspace.activePreset);if(!p)throw Error('Выберите пресет.');checkpoint('пресет «'+p.name+'»');
-  const kinds={tails:'tails',music:'music',tailMusic:'tailMusic'};const r=P.applyPreset(workspace.settings,p,id=>refs.has(id));
-  workspace.settings={...initial,...r.settings,previewFormat:workspace.settings.previewFormat};if(r.library)for(const k of Object.keys(kinds))workspace[k]=r.library[k].filter(v=>refs.get(typeof v==='string'?v:v.id)?.kind===k);
+  const kinds={tails:'tails',intros:'intros',music:'music',tailMusic:'tailMusic'};const r=P.applyPreset(workspace.settings,p,id=>refs.has(id));
+  workspace.settings={...initial,...r.settings,previewFormat:workspace.settings.previewFormat};if(r.library)for(const k of Object.keys(kinds))if(k!=='intros'||p.library?.intros)workspace[k]=r.library[k].filter(v=>refs.get(typeof v==='string'?v:v.id)?.kind===k);
   settingsHTML();renderLibrary();updateMode();save();schedulePreview();status('Применён пресет «'+p.name+'»'+(r.missing?' · '+plural(r.missing,'слой отсутствует','слоя отсутствуют','слоёв отсутствуют')+' на этом компьютере':'')+'. Ctrl+Z — отменить.');}
 
  /* ---------- Sources ---------- */
@@ -290,10 +293,10 @@
   $('cm-drop').classList.toggle('is-empty',!all.length);
   updateEstimate();}
  async function upload(files,kind){if(importTask)throw Error('Дождитесь добавления предыдущих файлов.');uploadController=new AbortController();importTask=uploadFiles(files,kind,uploadController.signal).finally(()=>{importTask=null;uploadController=null;updateEstimate();});updateEstimate();return importTask;}
- async function uploadFiles(files,kind,signal){const exts=kind==='inputs'?/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp|bmp|tiff)$/i:kind==='tails'?/\.(mp4|mov|avi|mkv|webm)$/i:/\.(mp3|wav|aac|m4a|ogg|flac)$/i;
+ async function uploadFiles(files,kind,signal){const exts=kind==='inputs'?/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp|bmp|tiff)$/i:idKinds.has(kind)?/\.(mp4|mov|avi|mkv|webm)$/i:/\.(mp3|wav|aac|m4a|ogg|flac)$/i;
   const selected=[...files].filter(f=>exts.test(f.name));if(!selected.length)throw Error('Нет подходящих медиафайлов.');let added=0,last=null;const failed=[];
   for(const file of selected){status(`Копирование на этот компьютер: ${added+failed.length+1}/${selected.length} · ${file.name}`);
-   try{const m=await api('upload?kind='+kind+'&name='+encodeURIComponent(file.name),{method:'POST',body:file,signal});media.push(m);refs.set(m.id,m);added++;last=m;if(kind==='inputs')workspace.selected.push(m.id);else workspace[kind].push(kind==='tails'?m.id:{id:m.id,volume:8});await persist();}
+   try{const m=await api('upload?kind='+kind+'&name='+encodeURIComponent(file.name),{method:'POST',body:file,signal});media.push(m);refs.set(m.id,m);added++;last=m;if(kind==='inputs')workspace.selected.push(m.id);else workspace[kind].push(idKinds.has(kind)?m.id:{id:m.id,volume:8});await persist();}
    catch(e){if(signal.aborted)throw e;failed.push(file.name+': '+e.message);}}
   renderFiles();renderLibrary();
   if(failed.length)status('Добавлено '+added+' из '+selected.length+'. Не добавлены: '+failed.slice(0,3).join('; '),true);else status('');
@@ -368,7 +371,7 @@
  function updateTrimUI(){const e=edit(),d=current?.probe?.duration;if(!e||!d||current.probe.image){$('cm-trim-length').textContent='';return;}
   Object.assign($('cm-trim-range').style,{left:e.start/d*100+'%',width:Math.max(0,(e.end-e.start)/d*100)+'%'});$('cm-playhead').style.left=Math.min(100,(e.time||0)/d*100)+'%';
   const len=e.end-e.start,s=workspace.settings,hasAudio=s.musicMix!==false&&workspace.music.length>0;
-  $('cm-trim-length').textContent=s.mode==='unique'?'Длительность '+wholeTime(d)+(hasAudio?' · с аудио':''):'Фрагмент '+(e.start===0&&e.end===d&&d>=1?wholeTime(len):time(len))+(s.tailmix?' · с хвостами '+wholeTime(len+s.tailSeconds):hasAudio?' · только аудио':'');}
+  $('cm-trim-length').textContent=s.mode==='unique'?'Длительность '+wholeTime(d)+(hasAudio?' · с аудио':''):'Фрагмент '+(e.start===0&&e.end===d&&d>=1?wholeTime(len):time(len))+(s.intro&&workspace.intros.length?' · со вставкой в начале':'')+(s.tailmix?' · с хвостами '+wholeTime(len+s.tailSeconds):hasAudio?' · только аудио':'');}
  function setTime(t){const e=edit();if(!e)return;const d=current.probe.duration;e.time=Math.max(0,Math.min(d,roundTime(t)));$('cm-seek').value=e.time;$('cm-position').textContent=time(e.time);updateTrimUI();save();schedulePreview();}
  function stepFrame(dir){if(!current?.probe||current.probe.image)return;setTime((edit().time||0)+dir/(current.probe.frameRate||30));}
  function setTrim(key,value){const e=edit(),d=current.probe.duration,rounded=roundTime(value),v=key==='end'?P.trimEnd(rounded,d):rounded;
@@ -554,8 +557,8 @@
  window.changeOutputDir=browseOutputDir;
  window.openOutputDir=openRootFolder;
 
- function renderLibrary(){for(const kind of ['tails','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
-  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${kind==='tails'?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить хвост ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить хвост ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}${kind==='music'?`<button type="button" class="icon-button cm-play-mix" data-play-mix aria-label="Прослушать вместе с видео: ${esc(m.name)}" title="Прослушать вместе с видео">${icon('film')}</button>`:''}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
+ function renderLibrary(){for(const kind of ['tails','intros','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
+  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${idKinds.has(kind)?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}${kind==='music'?`<button type="button" class="icon-button cm-play-mix" data-play-mix aria-label="Прослушать вместе с видео: ${esc(m.name)}" title="Прослушать вместе с видео">${icon('film')}</button>`:''}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
   syncPlayingButtons();updateTailFields();updateEstimate();checkAssetsStatus();}
 
@@ -572,7 +575,7 @@
   $('cm-run-reason').classList.toggle('is-blocked',!!reason&&!!sel.length);
   updateNameExample();updateTailFields();presetState();updatePlanIfOpen(p);}
  function renderPlan(p=plan()){const s=workspace.settings,preset=matchedPreset(),hasMusic=s.musicMix!==false&&workspace.music.length>0;
-  $('cm-plan-totals').innerHTML=`<strong>${plural(p.total,'файл','файла','файлов')}</strong> · ${s.mode==='clean'?'Clean3: '+esc(p.formats.join(', '))+' · '+scaleLabels[s.scale]+(s.tailmix?' · хвосты '+s.tailSeconds+' с':hasMusic?' · только аудио':' · без хвостов'):'уникализация: '+plural(p.copies,'копия','копии','копий')+(hasMusic?' · только аудио':'')}${preset?' · пресет «'+esc(preset.name)+'»':''}${p.seconds?' · видео суммарно ≈ '+Math.round(p.seconds/60*10)/10+' мин':''}`;
+  $('cm-plan-totals').innerHTML=`<strong>${plural(p.total,'файл','файла','файлов')}</strong> · ${s.mode==='clean'?'Clean3: '+esc(p.formats.join(', '))+' · '+scaleLabels[s.scale]+(s.intro?' · вставка в начале':'')+(s.tailmix?' · хвосты '+s.tailSeconds+' с':hasMusic?' · только аудио':' · без хвостов'):'уникализация: '+plural(p.copies,'копия','копии','копий')+(hasMusic?' · только аудио':'')}${preset?' · пресет «'+esc(preset.name)+'»':''}${p.seconds?' · видео суммарно ≈ '+Math.round(p.seconds/60*10)/10+' мин':''}`;
   $('cm-plan-warnings').innerHTML=p.warnings.map(w=>`<li class="is-${w.level}">${esc(w.text)}</li>`).join('');
   $('cm-plan-list').innerHTML=p.items.map(i=>`<details class="cm-plan-item${i.skipped?' is-skipped':''}" ${p.items.length<=4&&!i.skipped?'open':''}><summary><span>${esc(i.name)}</span><small>${i.skipped?esc(i.skipped):plural(i.outputs.length,'файл','файла','файлов')+(i.length&&!i.image?' · '+time(i.length):'')}</small></summary>${i.outputs.length?'<ul>'+i.outputs.map(n=>'<li><code>'+esc(n)+'</code></li>').join('')+'</ul>':''}</details>`).join('')||'<p class="hint">Отметьте исходники слева.</p>';
   const reason=runBlockers(p);$('cm-plan-run').disabled=!!reason;$('cm-plan-run').textContent=busy?'В очередь':s.mode==='unique'?'Создать варианты':'Создать видео';}
@@ -584,7 +587,7 @@
  async function run(){if(!validateFields())return;stopInlineAudio();const p=plan(),reason=runBlockers(p);if(reason){renderPlan(p);if(!$('cm-plan-dialog').open)$('cm-plan-dialog').showModal();status(reason,true);return;}
   status('');runFeedback();clearTimeout(previewTimer);await previewQueue.catch(()=>{});try{await persist();}catch(e){status('Настройки не сохранены на устройстве, но задача будет запущена: '+e.message,true);}
   const ids=new Set(p.included),edits={};for(const id of ids)if(workspace.edits[id])edits[id]=structuredClone(workspace.edits[id]);
-  const request={settings:structuredClone(workspace.settings),inputs:p.included,tails:[...workspace.tails],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic),edits,presetName:matchedPreset()?.name||''};
+  const request={settings:structuredClone(workspace.settings),inputs:p.included,tails:[...workspace.tails],intros:[...workspace.intros],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic),edits,presetName:matchedPreset()?.name||''};
   const queued=busy;const j=await api('jobs',{method:'POST',data:request,query:queued?'?queue=1':''});selectedJob=j.id;jobEvent(j);if($('cm-plan-dialog').open)$('cm-plan-dialog').close();}
 
  /* ---------- Jobs and results ---------- */
@@ -600,7 +603,7 @@
   $('cm-cancel').disabled=!busy;renderActive();updateEstimate();renderJobs();if(was&&!busy&&current)schedulePreview();}
  function renderActive(){const j=jobs.find(v=>v.status==='running');$('cm-launch-progress').hidden=!j;if(!j)return;$('cm-active-progress').value=Math.round(j.progress*100);$('cm-active-label').textContent=Math.round(j.progress*100)+'% · '+j.outputs.length+' из '+(j.total||'?')+' · '+j.label;}
  const jobTitle=j=>(j.mode==='unique'?'Варианты':'Clean3')+' · '+new Date(j.createdAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
- function jobMeta(j){const s=j.summary;if(!s)return 'Задача из прежней версии · параметры доступны через «Взять настройки».';return [s.mode==='clean'?'Форматы '+s.formats.join(', ')+' · '+(scaleLabels[s.scale]||s.scale)+(s.tailmix?' · хвосты':s.music?' · только аудио':''):plural(s.copies,'копия','копии','копий')+(s.music?' · только аудио':''),j.sources?plural(j.sources.length,'исходник','исходника','исходников'):'',s.preset?'пресет «'+s.preset+'»':'',s.nameTag?'метка '+s.nameTag:''].filter(Boolean).join(' · ');}
+ function jobMeta(j){const s=j.summary;if(!s)return 'Задача из прежней версии · параметры доступны через «Взять настройки».';return [s.mode==='clean'?'Форматы '+s.formats.join(', ')+' · '+(scaleLabels[s.scale]||s.scale)+(s.intro?' · вставка в начале':'')+(s.tailmix?' · хвосты':s.music?' · только аудио':''):plural(s.copies,'копия','копии','копий')+(s.music?' · только аудио':''),j.sources?plural(j.sources.length,'исходник','исходника','исходников'):'',s.preset?'пресет «'+s.preset+'»':'',s.nameTag?'метка '+s.nameTag:''].filter(Boolean).join(' · ');}
  /** Groups outputs by source: new jobs carry input IDs; older jobs fall back to the NNN_ name prefix. */
  function groupOutputs(j){const groups=new Map(),sources=j.sources||[];
   for(const o of j.outputs){let key=o.input,name;if(!key){const n=Number(/^(\d{3})_/.exec(o.name)?.[1]);key=sources[n-1]?.id||'#'+(n||0);}name=sources.find(s=>s.id===key)?.name||refs.get(key)?.name||(key.startsWith('#')?'Исходник '+key.slice(1):'Исходник');
@@ -641,7 +644,7 @@
   const settings={...r.settings};delete settings.encoder;delete settings.tailMode;delete settings.musicMode;workspace.settings={...initial,...settings};
   const keep=(id,kind)=>{const ok=refs.get(id)?.kind===kind;if(!ok)missing.push(id);return ok;};
   workspace.selected=(r.inputs||[]).filter(id=>keep(id,'inputs'));workspace.hiddenInputs=(workspace.hiddenInputs||[]).filter(id=>!workspace.selected.includes(id));
-  workspace.tails=(r.tails||[]).filter(id=>keep(id,'tails'));for(const k of ['music','tailMusic'])workspace[k]=(r[k]||[]).filter(v=>keep(v.id,k));
+  workspace.tails=(r.tails||[]).filter(id=>keep(id,'tails'));workspace.intros=(r.intros||[]).filter(id=>keep(id,'intros'));for(const k of ['music','tailMusic'])workspace[k]=(r[k]||[]).filter(v=>keep(v.id,k));
   for(const [id,e]of Object.entries(r.edits||{}))if(refs.has(id))workspace.edits[id]=e;
   settingsHTML();renderFiles();renderLibrary();updateMode();if(current)loadEditorValues();save();schedulePreview();
   status('Настройки задачи загружены в редактор'+(missing.length?' · отсутствуют '+plural(missing.length,'файл','файла','файлов'):'')+'. Проверьте план и запустите. Ctrl+Z — отменить.');}
@@ -663,9 +666,9 @@
       s.bitrateEnabled=false;
       s._speedVersion=2;
      }
-     workspace={...blankWorkspace(),...saved,settings:s};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
+     workspace={...blankWorkspace(),...saved,settings:s};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','intros','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
     const n=P.normalizePresets(saved.userPresets);workspace.userPresets=n.presets;dropped=n.dropped;if(dropped.length)workspace.rejectedPresets=[...(saved.rejectedPresets||[]),...(saved.userPresets||[]).filter(p=>!n.presets.some(x=>x.id===p?.id))].slice(-40);save();}
-   else{workspace=blankWorkspace();workspace.selected=visibleInputs().map(m=>m.id);for(const kind of ['tails','music','tailMusic'])workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:8});}
+   else{workspace=blankWorkspace();workspace.selected=visibleInputs().map(m=>m.id);for(const kind of ['tails','music','tailMusic'])workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:8});workspace.intros=[];}
    history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';updateOutputDirUI(catalog.outputRoot,catalog.defaultOutputRoot,catalog.isCustomOutput);
    settingsHTML();renderFiles();renderLibrary();updateMode();renderActive();renderJobs();$('cm-cancel').disabled=!busy;updateUndo();if(visible)events();
    status(!available?'FFmpeg не найден. Запустите CreoMaker через файл запуска.':dropped.length?'Повреждённые пресеты не загружены ('+dropped.map(d=>d.name).join(', ')+'). Остальные настройки восстановлены.':'',!available||!!dropped.length);
@@ -674,7 +677,7 @@
  async function close(){$('cm-meta-status').textContent='';$('cm-meta-fields').replaceChildren();
   uploadController?.abort();if(importTask)await importTask.catch(()=>{});if(opening)await opening.catch(()=>{});setVisible(false);if(!loaded&&!token)return;if(loaded)await persist().catch(()=>{});source?.close();
   if(token)await api('session',{method:'DELETE'}).catch(()=>{});token=null;previewSerial++;timelineCache.clear();sourceCache.clear();history.clear();sessionStorage.removeItem('creoToken');loaded=false;current=null;media=[];jobs=[];refs.clear();workspace=blankWorkspace();closePresetForm();closeCopyPanel();
-  for(const id of ['cm-files','cm-results','cm-jobs','cm-log','cm-zones','cm-tails-list','cm-music-list','cm-tailMusic-list','cm-plan-list','cm-plan-warnings','cm-user-preset'])$(id)?.replaceChildren();
+  for(const id of ['cm-files','cm-results','cm-jobs','cm-log','cm-zones','cm-tails-list','cm-intros-list','cm-music-list','cm-tailMusic-list','cm-plan-list','cm-plan-warnings','cm-user-preset'])$(id)?.replaceChildren();
   for(const id of ['cm-original','cm-player','cm-frame','cm-original-image','cm-player-image','cm-timeline','cm-source-frame'])$(id)?.removeAttribute('src');if($('cm-player-image'))$('cm-player-image').hidden=true;if($('cm-player'))$('cm-player').hidden=true;
   for(const id of ['cm-selected-name','cm-player-name','cm-output-path','cm-root-path','cm-progress-label','cm-status','cm-job-title','cm-job-error','cm-preset-state','cm-run-reason','cm-active-label']){const el=$(id);if(el)el.textContent='';}
   clearToast();
@@ -691,7 +694,7 @@
    for(const item of bundled)refs.set(item.id,item);
    media=[...media.filter(item=>!item.builtin),...bundled].sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true}));
    let changed=false;
-   for(const kind of ['tails','music','tailMusic']){
+   for(const kind of ['tails','intros','music','tailMusic']){
     const keep=workspace[kind].filter(item=>refs.has(typeof item==='string'?item:item.id));
     changed||=keep.length!==workspace[kind].length;
     workspace[kind]=keep;
@@ -712,7 +715,7 @@
  function switchMode(mode){if(mode===workspace.settings.mode)return;checkpoint('режим');workspace.settings.mode=mode;save();updateMode();renderZones();if(current)preview().catch(e=>status(e.message,true));}
  on('cm-image-note','click',e=>{const b=e.target.closest('[data-switch-mode]');if(b)switchMode(b.dataset.switchMode);});
  on('cm-style-presets','click',e=>{const b=e.target.closest('[data-cm-profile]');if(!b)return;const p=P.presets.find(p=>p.id===b.dataset.cmProfile);if(!p)return;checkpoint('профиль «'+p.label+'»');Object.assign(workspace.settings,p.settings);settingsHTML();save();schedulePreview();updateEstimate();});
- for(const kind of ['inputs','tails','music','tailMusic']){on('cm-add-'+kind,'click',()=>$('cm-pick-'+kind).click());on('cm-pick-'+kind,'change',async e=>{const files=[...e.target.files];e.target.value='';await upload(files,kind);});}
+ for(const kind of ['inputs','tails','intros','music','tailMusic']){on('cm-add-'+kind,'click',()=>$('cm-pick-'+kind).click());on('cm-pick-'+kind,'change',async e=>{const files=[...e.target.files];e.target.value='';await upload(files,kind);});}
  on('cm-add-folder','click',()=>$('cm-pick-folder').click());on('cm-pick-folder','change',async e=>{const files=[...e.target.files];e.target.value='';await upload(files,'inputs');});
  $('cm-drop').addEventListener('dragover',e=>{e.preventDefault();$('cm-drop').classList.add('drag-over');});$('cm-drop').addEventListener('dragleave',()=>$('cm-drop').classList.remove('drag-over'));$('cm-drop').addEventListener('drop',e=>{e.preventDefault();$('cm-drop').classList.remove('drag-over');upload(e.dataTransfer.files,'inputs').catch(err=>status(err.message,true));});
  on('cm-files','click',e=>{
@@ -745,8 +748,8 @@
   if(key){if(key==='outputFps')e.target.setCustomValidity(Number(e.target.value)>0&&Number(e.target.value)<12?'Укажите 0 или от 12 до 60 кадров/с.':'');if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:e.target.tagName==='SELECT'?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();if(workspace.settings.mode==='unique')schedulePreview();}
   if(e.target.dataset.format){const next=[...$('cm-formats').querySelectorAll('input:checked')].map(c=>c.dataset.format);if(!next.length){e.target.checked=true;status('Нужен хотя бы один формат.',true);return;}status('');checkpoint('форматы');workspace.settings.formats=next;save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();}
  });
- for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
-  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['tailmix','tailSeconds','fade'].includes(key)){updateTailFields();syncTailPills();}if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
+ for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-intro','intro'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
+  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['tailmix','intro','tailSeconds','fade'].includes(key)){updateTailFields();syncTailPills();}if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
  on('cm-scale-box','click',e=>{
   const b=e.target.closest('[data-scale]');if(!b)return;
   const s=b.dataset.scale;if(!s||workspace.settings.scale===s)return;
@@ -769,14 +772,14 @@
  on('cm-name-tag','input',e=>{$('cm-name-example').textContent=P.outputName({index:0,name:(selectedMedia()[0]||current)?.name||'ролик.mp4',target:workspace.settings.mode==='unique'?1:workspace.settings.formats[0],mode:workspace.settings.mode,image:workspace.settings.mode==='unique'&&isImage(selectedMedia()[0]||current),tag:e.target.value});});
  on('cm-goto-library','click',()=>{const l=$('cm-library');l.open=true;l.scrollIntoView({block:'start'});l.querySelector('summary').focus({preventScroll:true});});
  on('cm-library','change',e=>{const row=e.target.closest('[data-track-id]');if(!row)return;const {trackId:id,kind}=row.dataset;
-  if(e.target.type==='checkbox'){checkpoint('слои');workspace[kind]=workspace[kind].filter(v=>(typeof v==='string'?v:v.id)!==id);if(e.target.checked)workspace[kind].push(kind==='tails'?id:{id,volume:Number(row.querySelector('input[type=number]')?.value??8)});renderLibrary();}
+  if(e.target.type==='checkbox'){checkpoint('слои');workspace[kind]=workspace[kind].filter(v=>(typeof v==='string'?v:v.id)!==id);if(e.target.checked)workspace[kind].push(idKinds.has(kind)?id:{id,volume:Number(row.querySelector('input[type=number]')?.value??8)});renderLibrary();}
   else{const v=Number(e.target.value);if(!e.target.checkValidity()){e.target.reportValidity();return;}if(playingTrackKey===kind+':'+id)inlineAudio.volume=previewTrackVolume(v);const track=workspace[kind].find(t=>t.id===id);if(track){checkpoint('громкость','volume:'+id);track.volume=v;}}save();presetState();});
- on('cm-library','click',e=>{const all=e.target.closest('[data-library-all]');if(all){const kind=all.dataset.libraryAll;checkpoint('слои');workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:workspace[kind].find(t=>t.id===m.id)?.volume??8});renderLibrary();save();return;}
+ on('cm-library','click',e=>{const all=e.target.closest('[data-library-all]');if(all){const kind=all.dataset.libraryAll;checkpoint('слои');workspace[kind]=media.filter(m=>m.kind===kind).map(m=>idKinds.has(kind)?m.id:{id:m.id,volume:workspace[kind].find(t=>t.id===m.id)?.volume??8});renderLibrary();save();return;}
   const none=e.target.closest('[data-library-none]');if(none){checkpoint('слои');workspace[none.dataset.libraryNone]=[];renderLibrary();save();return;}
   const row=e.target.closest('[data-track-id]');if(!row)return;const m=refs.get(row.dataset.trackId);if(!m)return;
   if(e.target.closest('[data-play-mix]')){const volInput=row.querySelector('input[type=number]');openMixPreview([{id:m.id,kind:row.dataset.kind,volume:volInput?Number(volInput.value):8}]);return;}
-  if(e.target.closest('[data-play-track]')){const kind=row.dataset.kind;if(kind==='tails'){stopInlineAudio();openPlayer({url:mediaURL(m.id),name:m.name,audio:false,volume:1});}else{const volInput=row.querySelector('input[type=number]'),rawVol=volInput?Number(volInput.value):(workspace[kind].find(v=>v.id===m.id)?.volume??8);toggleInlineAudio(kind,m.id,mediaURL(m.id),rawVol,m.name);}return;}
-  const move=e.target.closest('[data-order]');if(move){const list=workspace.tails,index=list.indexOf(m.id),target=index+Number(move.dataset.order);if(index>=0&&target>=0&&target<list.length){checkpoint('порядок хвостов');[list[index],list[target]]=[list[target],list[index]];renderLibrary();save();row.parentElement.querySelector(`[data-track-id="${m.id}"] [data-order="${move.dataset.order}"]`)?.focus();}}});
+  if(e.target.closest('[data-play-track]')){const kind=row.dataset.kind;if(idKinds.has(kind)){stopInlineAudio();openPlayer({url:mediaURL(m.id),name:m.name,audio:false,volume:1});}else{const volInput=row.querySelector('input[type=number]'),rawVol=volInput?Number(volInput.value):(workspace[kind].find(v=>v.id===m.id)?.volume??8);toggleInlineAudio(kind,m.id,mediaURL(m.id),rawVol,m.name);}return;}
+  const move=e.target.closest('[data-order]');if(move){const list=workspace[row.dataset.kind],index=list.indexOf(m.id),target=index+Number(move.dataset.order);if(index>=0&&target>=0&&target<list.length){checkpoint(row.dataset.kind==='intros'?'порядок вставок':'порядок хвостов');[list[index],list[target]]=[list[target],list[index]];renderLibrary();save();row.parentElement.querySelector(`[data-track-id="${m.id}"] [data-order="${move.dataset.order}"]`)?.focus();}}});
  on('cm-preview-format','change',e=>{workspace.settings.previewFormat=e.target.value;save();updateCaptions();updateCropGuide();schedulePreview();});
  on('cm-refresh-preview','click',()=>{sourceCache.clear();return preview();});
  document.querySelectorAll('[data-cm-view]').forEach(b=>b.addEventListener('click',()=>{workspace.view=b.dataset.cmView;save();updateStage();if(workspace.view==='split'&&current)preview().catch(e=>status(e.message,true));}));
