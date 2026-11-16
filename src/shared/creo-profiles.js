@@ -29,7 +29,7 @@
 
  /* ---------- Batch dry plan ---------- */
  /** inputs: [{id,name,image?,duration?}] in batch order. Returns exactly what a job with these settings would create. */
- function planBatch({settings,inputs,edits={},tails=[],music}){
+ function planBatch({settings,inputs,edits={},tails=[],intros=[],music}){
   const s=settings||{},clean=s.mode!=='unique',items=[],warnings=[],names=new Set(),duplicates=[];let index=0,seconds=0;
   const targets=clean?(Array.isArray(s.formats)?s.formats.filter(f=>formats[f]):[]):Array.from({length:Math.max(0,Math.round(Number(s.copies)||0))},(_,i)=>i+1);
   for(const m of inputs||[]){
@@ -45,6 +45,7 @@
   if(clean&&!targets.length)warnings.push({level:'error',text:'Выберите хотя бы один формат.'});
   if(!included.length)warnings.push({level:'error',text:skipped.length?'В пакете нет видео для Clean3. Переключитесь на «Варианты» или выберите видео.':'Отметьте исходники для обработки.'});
   if(included.length>200)warnings.push({level:'error',text:'Не более 200 исходников в одной задаче.'});
+  if(clean&&s.intro&&!intros.length)warnings.push({level:'error',text:'Начальная вставка включена, но не выбрана. Выберите вставку в медиатеке или выключите её.'});
   if(clean&&s.tailmix&&!tails.length)warnings.push({level:'error',text:'Хвосты включены, но не выбраны. Выберите хвосты или выключите их.'});
   if(s.musicMix&&Array.isArray(music)&&!music.length)warnings.push({level:'info',text:'Наложение аудио включено, но дорожки не выбраны — ролик сохранится с исходным звуком.'});
   if(skipped.length)warnings.push({level:'info',text:'Пропущено изображений: '+skipped.length+' — они обрабатываются только в режиме «Варианты».'});
@@ -68,9 +69,9 @@
 
  /* ---------- Named user presets ---------- */
  // Content-specific metadata texts and the preview-only format are deliberately not part of a processing preset.
- const settingKeys=['mode','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
+ const settingKeys=['mode','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','intro','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
  const enums={mode:['clean','unique'],acceleration:['auto','cpu','amd','nvidia','intel','apple'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
- const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','musicMix','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
+ const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','intro','musicMix','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
  const idRe=/^[a-zA-Z0-9_-]{1,100}$/;
  function presetSettings(s){const out={};for(const k of settingKeys)if(s&&Object.hasOwn(s,k))out[k]=k==='formats'?[...s[k]]:s[k];return out;}
  function cleanName(name){const n=String(name??'').replace(/[\x00-\x1f]/g,'').replace(/\s+/g,' ').trim();if(!n)throw Error('Введите название пресета.');if(n.length>60)throw Error('Название пресета — до 60 символов.');return n;}
@@ -86,8 +87,8 @@
   if(!Object.keys(s).length)throw Error('Нет параметров пресета.');return s;
  }
  function checkLibrary(raw){if(raw==null)return null;if(typeof raw!=='object')throw Error('Неверные слои пресета.');const out={};
-  for(const k of ['tails','music','tailMusic']){const list=raw[k]??[];if(!Array.isArray(list)||list.length>100)throw Error('Неверные слои пресета.');
-   out[k]=list.map(v=>{if(k==='tails'){if(!idRe.test(v))throw Error('Неверный хвост в пресете.');return v;}if(!v||!idRe.test(v.id)||typeof v.volume!=='number'||!(v.volume>=0&&v.volume<=200))throw Error('Неверная дорожка в пресете.');return {id:v.id,volume:v.volume};});}
+  for(const k of ['tails','intros','music','tailMusic']){const list=raw[k]??[];if(!Array.isArray(list)||list.length>100)throw Error('Неверные слои пресета.');
+   out[k]=list.map(v=>{if(k==='tails'||k==='intros'){if(!idRe.test(v))throw Error('Неверный хвост в пресете.');return v;}if(!v||!idRe.test(v.id)||typeof v.volume!=='number'||!(v.volume>=0&&v.volume<=200))throw Error('Неверная дорожка в пресете.');return {id:v.id,volume:v.volume};});}
   return out;}
  function normalizePreset(raw){if(!raw||typeof raw!=='object')throw Error('Неверный пресет.');if(!idRe.test(raw.id))throw Error('Неверный ID пресета.');
   const p={id:raw.id,name:cleanName(raw.name),settings:checkSettings(raw.settings),createdAt:typeof raw.createdAt==='string'?raw.createdAt.slice(0,40):'',updatedAt:typeof raw.updatedAt==='string'?raw.updatedAt.slice(0,40):''};
@@ -104,7 +105,7 @@
  function deletePreset(list,id){if(!list.some(x=>x.id===id))throw Error('Пресет не найден.');return list.filter(x=>x.id!==id);}
  /** Returns new settings/library; library IDs absent on this computer are dropped and counted. */
  function applyPreset(settings,preset,known=()=>true){const next={...settings,...structuredClone(preset.settings)};let library=null,missing=0;
-  if(preset.library){library={};for(const k of ['tails','music','tailMusic']){library[k]=(preset.library[k]||[]).filter(v=>{const ok=known(typeof v==='string'?v:v.id);if(!ok)missing++;return ok;}).map(v=>typeof v==='string'?v:{...v});}}
+  if(preset.library){library={};for(const k of ['tails','intros','music','tailMusic']){library[k]=(preset.library[k]||[]).filter(v=>{const ok=known(typeof v==='string'?v:v.id);if(!ok)missing++;return ok;}).map(v=>typeof v==='string'?v:{...v});}}
   return {settings:next,library,missing};}
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
  function matchUserPreset(settings,list){return (list||[]).find(p=>Object.entries(p.settings).every(([k,v])=>same(settings?.[k],v)));}

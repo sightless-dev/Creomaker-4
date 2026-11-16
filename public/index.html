@@ -155,6 +155,10 @@
      <div id="cm-formats" class="cm-formats" role="group" aria-label="Выходные форматы"></div>
     </div>
     <div class="cm-tails-box" id="cm-audio-tails-box">
+     <label class="cm-setting-row cm-setting-toggle" id="cm-intro-row">
+      <span class="cm-setting-label"><span data-icon="film"></span><span><strong>Начальная вставка</strong><small class="cm-row-sub">Ролик-заставка в начале со своим звуком, музыка начнётся после неё</small></span></span>
+      <input id="cm-intro" type="checkbox">
+     </label>
      <label class="cm-setting-row cm-setting-toggle" id="cm-tailmix-row">
       <span class="cm-setting-label"><span data-icon="director"></span><span><strong>Добавить видеохвосты</strong><small class="cm-row-sub">Склейка с видеохвостами в конце ролика</small></span></span>
       <input id="cm-tailmix" type="checkbox" checked>
@@ -260,7 +264,7 @@
 
  </div>
  <div class="app-view view-library">
- <header class="view-header"><div><h2>Медиатека</h2><p class="hint">Видеохвосты и музыка, которые CreoMaker подклеивает к роликам. Отмеченные дорожки попадают в экспорт.</p></div></header>
+ <header class="view-header"><div><h2>Медиатека</h2><p class="hint">Начальные вставки, видеохвосты и музыка, которые CreoMaker подклеивает к роликам. Отмеченные дорожки попадают в экспорт.</p></div></header>
  <details id="cm-library" class="panel cm-library cm-disclosure">
   <summary><h2 id="cm-library-title"><span data-icon="music"></span>Библиотека хвостов и фоновой музыки</h2></summary>
   <div class="cm-library-body">
@@ -289,6 +293,7 @@
    </div>
    <div class="cm-layers-grid">
     <details class="panel cm-disclosure"><summary><span><span data-icon="film"></span>Видеохвосты</span><span id="cm-tails-count" class="hint">0</span></summary><p class="hint">Все подряд, затем повтор цикла. Стрелки меняют порядок.</p><div class="cm-list-tools"><button type="button" id="cm-add-tails" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="tails" class="cm-text-button">Все</button><button type="button" data-library-none="tails" class="cm-text-button">Снять выбор</button></div><div id="cm-tails-list" class="cm-tracks"></div></details>
+    <details class="panel cm-disclosure"><summary><span><span data-icon="film"></span>Начальные вставки</span><span id="cm-intros-count" class="hint">0</span></summary><p class="hint">Играют перед роликом со своим звуком, без музыки поверх. Несколько отмеченных — подряд. Включаются переключателем «Начальная вставка».</p><div class="cm-list-tools"><button type="button" id="cm-add-intros" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="intros" class="cm-text-button">Все</button><button type="button" data-library-none="intros" class="cm-text-button">Снять выбор</button></div><div id="cm-intros-list" class="cm-tracks"></div></details>
     <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка всего ролика</span><span id="cm-music-count" class="hint">0</span></summary><div class="cm-list-tools"><button type="button" id="cm-add-music" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="music" class="cm-text-button">Все</button><button type="button" data-library-none="music" class="cm-text-button">Снять выбор</button></div><div id="cm-music-list" class="cm-tracks"></div></details>
     <details class="panel cm-disclosure"><summary><span><span data-icon="music"></span>Музыка хвостов</span><span id="cm-tailMusic-count" class="hint">0</span></summary><p class="hint">Все дорожки вместе, только после основного видео.</p><div class="cm-list-tools"><button type="button" id="cm-add-tailMusic" class="button small"><span data-icon="plus"></span>Добавить</button><button type="button" data-library-all="tailMusic" class="cm-text-button">Все</button><button type="button" data-library-none="tailMusic" class="cm-text-button">Снять выбор</button></div><div id="cm-tailMusic-list" class="cm-tracks"></div></details>
    </div>
@@ -366,7 +371,7 @@
   </div>
  </dialog>
  <div id="cm-toasts" class="cm-toast-container" aria-live="polite" aria-atomic="true"></div>
- <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
+ <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-intros" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
 </section></main>
 </div>
 <footer class="statusbar cm-footer" id="statusbar">

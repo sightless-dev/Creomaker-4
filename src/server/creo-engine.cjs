@@ -12,7 +12,7 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, intro:false, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
@@ -29,7 +29,7 @@ function config(raw={}) {
   if(s.outputFps&&s.outputFps<12)throw Error('Частота кадров: 0 или от 12 до 60.');
   if(!Object.hasOwn(P.tones,s.tone))throw Error('Неверное тонирование.');
   for(const key of ['threads','copies','jpeg','uniqueNoise','crf'])s[key]=Math.round(s[key]);
-  for(const key of ['noise','bitrateEnabled','tailmix','musicMix','flip','metadata','verifyResults','signalChange'])s[key]=Boolean(s[key]);
+  for(const key of ['noise','bitrateEnabled','tailmix','intro','musicMix','flip','metadata','verifyResults','signalChange'])s[key]=Boolean(s[key]);
   // The web integration intentionally has no random/single media-selection modes.
   s.tailMode='all';s.musicMode='all';return s;
 }
@@ -240,6 +240,8 @@ class Engine {
     if(s.mode==='clean'&&inputs.some(i=>!videoExts.includes(path.extname(i.path).toLowerCase())))throw Error('Clean3 принимает только видео.');
     const tails=(request.tails||[]).map(resolveMedia),music=s.musicMix?(request.music||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[],tailMusic=s.tailmix&&s.musicMix?(request.tailMusic||[]).map(t=>({...resolveMedia(t.id),volume:num(t.volume,0,200,8)/100})):[];
     if(s.mode==='clean'&&s.tailmix&&!tails.length)throw Error('Добавьте хвосты или отключите Tailmix.');
+    const intros=s.mode==='clean'&&s.intro?(request.intros||[]).map(resolveMedia):[];
+    if(s.mode==='clean'&&s.intro&&!intros.length)throw Error('Начальная вставка включена, но не выбрана. Выберите вставку или выключите её.');
     const hardware=s.acceleration==='cpu'?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv',apple:'h264_videotoolbox'})[s.acceleration]||'libx264';
     if(s.encoder!=='libx264'&&!hardware.available.includes(s.encoder))throw Error('Выбранный GPU-кодировщик недоступен. Выберите «Авто» или CPU.');
     await fs.mkdir(outDir,{recursive:true});
@@ -270,7 +272,7 @@ class Engine {
       }
     };
     const encName=s.encoder==='h264_videotoolbox'?'Apple VideoToolbox (GPU)':s.encoder==='h264_nvenc'?'NVIDIA NVENC (GPU)':s.encoder==='h264_amf'?'AMD AMF (GPU)':s.encoder==='h264_qsv'?'Intel QSV (GPU)':'CPU (x264)';
-    update('Кодирование: '+encName+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map();
+    update('Кодирование: '+encName+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map(),introCache=new Map();
     const baselines = new Map();
     try{for(const [inputIndex,input]of inputs.entries()){
       if(signal?.aborted)throw Error('Обработка остановлена.');const probe=await this.probe(input.path,signal);if(!probe.width)throw Error('Нужен файл видео или изображения.');
@@ -308,7 +310,16 @@ class Engine {
               cycleCache.set(cycleKey,cycle);
             }
           }
-          await encode(rendered,settings=>this.mix(input.path,cycle,music,tailMusic,part,settings,e,vf,probe,run,target,work));
+          let intro=null;
+          if(intros.length){
+            const introKey = target + '@' + (rendered.outputFps || 30);
+            intro=introCache.get(introKey);
+            if(!intro){
+              intro=await encode(rendered,settings=>this.prepareIntro(intros,work,target,settings,run,signal));
+              introCache.set(introKey,intro);
+            }
+          }
+          await encode(rendered,settings=>this.mix(input.path,cycle,music,tailMusic,part,settings,e,vf,probe,run,target,work,intro));
         }
         await fs.rename(part,output);
         const finalProbe=await this.probe(output,signal);
@@ -324,7 +335,7 @@ class Engine {
               requireSignals: requiresSignals,
               requireAudio: requiresSignals || music.length > 0,
               metadataEnabled: s.metadata,
-              mainDuration: edit ? edit.end - edit.start : probe.duration,
+              mainDuration: (edit ? edit.end - edit.start : probe.duration) + (introCache.get(target + '@' + (rendered.outputFps || 30))?.duration || 0),
               tailSeconds: s.mode === 'clean' && s.tailmix ? s.tailSeconds : 0
             }, baselines.get(input.id), signal);
           } catch (error) {
@@ -337,6 +348,36 @@ class Engine {
       }
     }}finally{await fs.rm(work,{recursive:true,force:true});}
     return outputs;
+  }
+  /** Intro clips play before the main video with their own sound (or silence). They are normalised to the
+      target frame, fps and codec so the final concat can stream-copy, exactly like tails. Music overlays
+      are delayed by the returned duration, so nothing is mixed over the intro. */
+  async prepareIntro(intros,work,target,s,run,signal){
+    const [w,h]=formats[target],fps=s.outputFps||30,format=target.replace(':','_');
+    const compVf = compositionFilter(s, w, h);
+    const filterChain = scale(s.scale,w,h)+',fps='+fps+',format=yuv420p,setsar=1' + (compVf !== 'null' ? ',' + compVf : '');
+    const introAf = 'aresample=44100,aformat=channel_layouts=stereo,apad' + (s.signalChange ? ',' + audioSignalFilter(s) : '');
+    const clips=[];let total=0;
+    for(const [index,intro] of intros.entries()){
+      const probe=await this.probe(intro.path,signal);
+      if(!probe.width||probe.image)throw Error('Начальная вставка должна быть видео.');
+      const duration=probe.videoDuration||probe.duration;
+      if(!(duration>0))throw Error('Не удалось определить длительность начальной вставки.');
+      const clip='intro-'+format+'-'+fps+'-'+index+'.mp4';
+      const args=['-y','-i',intro.path];
+      if(!probe.audio)args.push('-f','lavfi','-i','anullsrc=r=44100:cl=stereo');
+      args.push('-map','0:'+probe.videoIndex,'-map',probe.audio?'0:'+probe.audioIndex:'1:a:0','-vf',filterChain,'-af',introAf,'-t',f(duration),...this.codec(s),path.join(work,clip));
+      await run(args,`Начальная вставка ${index+1}/${intros.length} · ${target}`,duration,0,.05/intros.length);
+      // Measure what was actually written so music offsets match the real intro length to the frame.
+      const written=await this.probe(path.join(work,clip),signal);
+      clips.push(clip);total+=written.duration||duration;
+    }
+    if(clips.length===1)return {file:path.join(work,clips[0]),duration:total};
+    const list=path.join(work,'intro-'+format+'-'+fps+'.txt');
+    await fs.writeFile(list,clips.map(clip=>"file '"+clip+"'").join('\n'));
+    const file=path.join(work,'intro-'+format+'-'+fps+'.mp4');
+    await run(['-y','-f','concat','-safe','1','-i',list,'-c','copy',file],'Сборка начальной вставки · '+target,total,.05,.01);
+    return {file,duration:(await this.probe(file,signal)).duration||total};
   }
   async prepareCycle(tails,work,target,s,run,signal){
     const [w,h]=formats[target],fps=s.outputFps||30,format=target.replace(':','_');
@@ -365,23 +406,27 @@ class Engine {
     await run(['-y','-f','concat','-safe','1','-i',list,'-c','copy',file],'Сборка всех хвостов · '+target,elapsed,.3,.05);
     return { file, duration: elapsed };
   }
-  async mix(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work){
-    if(cycle && work){
+  async mix(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work,intro=null){
+    if((cycle || intro) && work){
       try{
-        await this.mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work);
+        await this.mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work,intro);
         return;
       }catch(err){
         console.warn('mixFast fallback to mixLegacy:', err?.message || err);
       }
     }
-    await this.mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format);
+    await this.mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,intro);
   }
-  async mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work){
-    const cycleFile = typeof cycle === 'string' ? cycle : cycle.file;
-    const cycleDuration = (typeof cycle === 'object' && cycle?.duration) ? cycle.duration : (await this.probe(cycleFile)).duration;
+  async mixFast(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,work,intro=null){
+    const cycleFile = typeof cycle === 'string' ? cycle : cycle?.file || null;
+    const cycleDuration = !cycleFile ? 0 : (typeof cycle === 'object' && cycle?.duration) ? cycle.duration : (await this.probe(cycleFile)).duration;
+    const tailSeconds = cycleFile ? s.tailSeconds : 0;
+    const introFile = intro?.file || null;
+    const introDuration = introFile ? intro.duration : 0;
     const duration = edit.end - edit.start;
-    const total = duration + s.tailSeconds;
-    const fade = Math.min(s.fade, Math.max(0, duration - .1));
+    // Timeline: [intro with its own sound] → [main] → [tails]. Overlays start after the intro.
+    const total = introDuration + duration + tailSeconds;
+    const fade = cycleFile ? Math.min(s.fade, Math.max(0, duration - .1)) : 0;
     const outputFps = s.outputFps || 30;
     const [width, height] = formats[format];
     const compVf = compositionFilter(s, width, height);
@@ -400,9 +445,11 @@ class Engine {
     await run(mainArgs, 'Сборка клипа · ' + format, duration, .35, .15);
 
     // 2. Build concat list for fast stream-copy
-    const repeats = Math.max(1, Math.ceil(s.tailSeconds / Math.max(0.1, cycleDuration)) + 1);
+    const repeats = cycleFile ? Math.max(1, Math.ceil(tailSeconds / Math.max(0.1, cycleDuration)) + 1) : 0;
     const listPath = path.join(work, `concat-${format.replace(':', '_')}-${crypto.randomInt(10000, 99999)}.txt`);
-    const listLines = [`file '${mainPart.replace(/\\/g, '/')}'`];
+    const listLines = [];
+    if (introFile) listLines.push(`file '${introFile.replace(/\\/g, '/')}'`);
+    listLines.push(`file '${mainPart.replace(/\\/g, '/')}'`);
     for (let i = 0; i < repeats; i++) {
       listLines.push(`file '${cycleFile.replace(/\\/g, '/')}'`);
     }
@@ -423,7 +470,7 @@ class Engine {
         '-movflags', '+faststart+use_metadata_tags',
         output
       ];
-      await run(copyArgs, 'Склейка хвостов · ' + format, total, .5, .5);
+      await run(copyArgs, (cycleFile ? 'Склейка хвостов · ' : 'Склейка начальной вставки · ') + format, total, .5, .5);
     } else {
       // Stream copy video (-c:v copy) while mixing looped music tracks
       const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath];
@@ -431,18 +478,21 @@ class Engine {
       const audioMixInputs = ['[0:a]'];
       let inputIdx = 1;
 
+      const introDelay = Math.round(introDuration * 1000);
+      const musicDuration = total - introDuration;
       for (const track of music) {
-        args.push('-stream_loop', '-1', '-t', f(total), '-i', track.path);
+        args.push('-stream_loop', '-1', '-t', f(musicDuration), '-i', track.path);
         const label = 'm' + inputIdx;
-        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(total)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);
+        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(musicDuration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}${introDelay ? `,adelay=${introDelay}|${introDelay}` : ''}[${label}]`);
         audioMixInputs.push(`[${label}]`);
         inputIdx++;
       }
 
-      for (const track of tailMusic) {
-        args.push('-stream_loop', '-1', '-t', f(s.tailSeconds), '-i', track.path);
+      for (const track of cycleFile ? tailMusic : []) {
+        args.push('-stream_loop', '-1', '-t', f(tailSeconds), '-i', track.path);
         const label = 't' + inputIdx;
-        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration * 1000)}|${Math.round(duration * 1000)}[${label}]`);
+        const tailDelay = Math.round((introDuration + duration) * 1000);
+        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${tailDelay}|${tailDelay}[${label}]`);
         audioMixInputs.push(`[${label}]`);
         inputIdx++;
       }
@@ -465,28 +515,34 @@ class Engine {
         '-movflags', '+faststart+use_metadata_tags',
         output
       );
-      await run(args, 'Склейка хвостов и звука · ' + format, total, .5, .5);
+      await run(args, (cycleFile ? 'Склейка хвостов и звука · ' : 'Склейка вставки и звука · ') + format, total, .5, .5);
     }
   }
-  async mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format){
+  async mixLegacy(main,cycle,music,tailMusic,output,s,edit,videoFilter,probe,run,format,intro=null){
     const cycleFile = typeof cycle === 'string' ? cycle : cycle?.file;
-    const duration=edit.end-edit.start,total=duration+(cycleFile?s.tailSeconds:0);
+    const introFile = intro?.file || null, introDuration = introFile ? intro.duration : 0;
+    const duration=edit.end-edit.start,total=introDuration+duration+(cycleFile?s.tailSeconds:0);
     const args=['-y','-ss',f(edit.start),'-t',f(duration),'-i',main],graph=[],audio=[];let input=1;
     if(cycleFile){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',cycleFile);input++;}
+    let introInput=-1;if(introFile){args.push('-i',introFile);introInput=input++;}
     const fade=cycleFile?Math.min(s.fade,Math.max(0,duration-.1)):0;
     const outputFps = s.outputFps || 30;
     graph.push(`[0:${probe.videoIndex}]${videoFilter},fps=${outputFps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS${fade?`,fade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[mv]`);
     const af=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
     graph.push(probe.audio?`[0:${probe.audioIndex}]${af}${fade?`,afade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[ma]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`);
-    if(cycleFile){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`,'[mv][tv]concat=n=2:v=1:a=0[joinedv]','[ma][ta]concat=n=2:v=0:a=1[base]');}else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
-    for(const track of music){args.push('-stream_loop','-1','-t',f(total),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(total)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);audio.push('['+label+']');input++;}
-    if(cycleFile)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${Math.round(duration*1000)}|${Math.round(duration*1000)}[${label}]`);audio.push('['+label+']');input++;}
+    const videoParts=['[mv]'],audioParts=['[ma]'];
+    if(introFile){graph.push(`[${introInput}:v]setpts=PTS-STARTPTS,fps=${outputFps},format=yuv420p,setsar=1[iv]`,`[${introInput}:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(introDuration)},asetpts=PTS-STARTPTS[ia]`);videoParts.unshift('[iv]');audioParts.unshift('[ia]');}
+    if(cycleFile){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`);videoParts.push('[tv]');audioParts.push('[ta]');}
+    if(videoParts.length>1)graph.push(`${videoParts.join('')}concat=n=${videoParts.length}:v=1:a=0[joinedv]`,`${audioParts.join('')}concat=n=${audioParts.length}:v=0:a=1[base]`);else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
+    const introDelay=Math.round(introDuration*1000),musicDuration=total-introDuration;
+    for(const track of music){args.push('-stream_loop','-1','-t',f(musicDuration),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(musicDuration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}${introDelay?`,adelay=${introDelay}|${introDelay}`:''}[${label}]`);audio.push('['+label+']');input++;}
+    if(cycleFile)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input,delay=Math.round((introDuration+duration)*1000);graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${delay}|${delay}[${label}]`);audio.push('['+label+']');input++;}
     graph.push(audio.length>1?`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0[mixeda]`:'[base]anull[mixeda]');
     const [width, height] = formats[format];
     graph.push('[joinedv]' + compositionFilter(s, width, height) + '[outv]');
     graph.push('[mixeda]' + audioSignalFilter(s) + '[outa]');
     args.push('-filter_complex',graph.join(';'),'-map','[outv]','-map','[outa]',...this.codec(s),...this.metadata(s),'-t',f(total),'-movflags','+faststart+use_metadata_tags',output);
-    await run(args,'Финальная сборка · '+format,total,cycleFile?.35:0,cycleFile?.65:1);
+    await run(args,'Финальная сборка · '+format,total,cycleFile||introFile?.35:0,cycleFile||introFile?.65:1);
   }
   async mixUnique(inputPath,probe,s,filter,music,output,duration,run,target,inputName){
     const args=['-y','-i',inputPath],graph=[],audio=['[basea]'];let input=1;

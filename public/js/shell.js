@@ -94,7 +94,7 @@
       if (app.dataset.view === 'library') {
         const card = target.closest('.cm-layers-grid > details');
         const list = card?.querySelector('[id$="-list"]')?.id || '';
-        return { 'cm-tails-list': 'tails', 'cm-music-list': 'music', 'cm-tailMusic-list': 'tailMusic' }[list] || false;
+        return { 'cm-tails-list': 'tails', 'cm-intros-list': 'intros', 'cm-music-list': 'music', 'cm-tailMusic-list': 'tailMusic' }[list] || false;
       }
       return false;
     };

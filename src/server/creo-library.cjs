@@ -13,7 +13,7 @@ async function entries(folder) {
 }
 
 async function bundledLibrary(root) {
-  const groups = [['music', 'music', audioExts], ['Tails', 'tails', videoExts], ['tail_music', 'tailMusic', audioExts]];
+  const groups = [['music', 'music', audioExts], ['Tails', 'tails', videoExts], ['Intros', 'intros', videoExts], ['tail_music', 'tailMusic', audioExts]];
   const directories = (await entries(root)).filter(entry => entry.isDirectory());
   const media = new Map();
   async function walk(folder, kind, extensions, source) {
