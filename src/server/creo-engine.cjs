@@ -12,7 +12,7 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', compression:'custom', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, intro:false, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', compression:'custom', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, intro:false, musicMix:true, musicNormalize:false, videoVolume:100, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
@@ -24,13 +24,14 @@ function config(raw={}) {
   if(!Array.isArray(s.formats)||!s.formats.length||s.formats.some(f=>!formats[f]))throw Error('Выберите форматы кадра.'); s.formats=[...new Set(s.formats)];
   if(s.previewFormat&&!formats[s.previewFormat])throw Error('Неверный формат предпросмотра.');
   if(!['crop','letterbox','stretch'].includes(s.scale)||!presets.includes(s.preset))throw Error('Неверный режим масштабирования или кодирования.');
-  for(const [key,min,max] of [['crf',0,51],['threads',0,32],['bitrate',10000,15000],['tailSeconds',1,1800],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
+  for(const [key,min,max] of [['crf',0,51],['threads',0,32],['bitrate',10000,15000],['tailSeconds',1,1800],['videoVolume',0,200],['fade',0,8],['copies',1,50],['uniqueNoise',0,15],['hue',0,10],['saturation',.95,1.1],['contrast',.95,1.1],['brightness',-.1,.1],['speed',0,5],['jpeg',80,100],['zoom',0,5],['rotate',0,5],['blur',0,5],['pitch',0,30]])s[key]=num(s[key],min,max,defaults[key]);
   for(const [key,,min,max] of P.fields)s[key]=num(s[key],min,max,P.defaults[key]);
   for(const key of ['colorShift','pixelation','outputFps'])s[key]=Math.round(s[key]);
   if(s.outputFps&&s.outputFps<12)throw Error('Частота кадров: 0 или от 12 до 60.');
   if(!Object.hasOwn(P.tones,s.tone))throw Error('Неверное тонирование.');
   for(const key of ['threads','copies','jpeg','uniqueNoise','crf'])s[key]=Math.round(s[key]);
-  for(const key of ['noise','bitrateEnabled','tailmix','intro','musicMix','flip','metadata','verifyResults','signalChange'])s[key]=Boolean(s[key]);
+  for(const key of ['noise','bitrateEnabled','tailmix','intro','musicMix','musicNormalize','flip','metadata','verifyResults','signalChange'])s[key]=Boolean(s[key]);
+  s.videoVolume=Math.round(s.videoVolume);
   // The web integration intentionally has no random/single media-selection modes.
   s.tailMode='all';s.musicMode='all';return s;
 }
@@ -90,6 +91,21 @@ function compositionFilter(settings, width, height) {
   if (!settings.signalChange || !settings.signalCrop) return 'null';
   const ratio = 1 - settings.signalCrop * 2 / 100;
   return `crop=trunc(iw*${f(ratio)}/2)*2:trunc(ih*${f(ratio)}/2)*2,scale=${width}:${height}`;
+}
+
+/* Gain for the source video's own sound (100% = unchanged). Applied only to the main clip, never to intros or tails. */
+function videoGain(settings) {
+  const v = Number(settings.videoVolume ?? 100);
+  return v === 100 ? '' : `,volume=${f(v / 100)}`;
+}
+
+/* Music loudness: when enabled every track is first brought to one EBU R128 level (-14 LUFS, the usual
+   streaming target), so quiet and loud tracks sound alike; the per-track volume is then applied on top. */
+const musicLoudnorm = 'loudnorm=I=-14:TP=-1:LRA=11,aresample=44100';
+function musicFilter(settings, duration, volume, delay = 0) {
+  return `aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`
+    + (settings.musicNormalize ? ',' + musicLoudnorm + ',aformat=channel_layouts=stereo' : '')
+    + `,volume=${f(volume)}` + (delay ? `,adelay=${delay}|${delay}` : '');
 }
 
 function audioSignalFilter(settings) {
@@ -296,7 +312,7 @@ class Engine {
             const render=async settings=>{
               const args=['-y','-i',input.path,...this.uniqueArgs(rendered,probe,filter)];
               if(probe.image){args.push('-frames:v','1');if(['.jpg','.jpeg'].includes(ext))args.push('-q:v',String(Math.max(1,Math.round(31-s.jpeg*.3))));if(ext==='.webp')args.push('-quality','90');}
-              else{args.push(...this.codec({...settings,bitrateEnabled:false}));if(probe.audio)args.push('-af',filter.audio);args.push('-movflags','+faststart+use_metadata_tags');}
+              else{args.push(...this.codec({...settings,bitrateEnabled:false}));if(probe.audio)args.push('-af',filter.audio+videoGain(settings));args.push('-movflags','+faststart+use_metadata_tags');}
               if(s.metadata)args.push(...this.metadata(s));args.push(part);await run(args,'Вариант '+target+' · '+input.name,outDuration);
             };
             if(probe.image)await render(s);else await encode(rendered,render);
@@ -442,7 +458,7 @@ class Engine {
     if (fade > 0) vfParts.push(`fade=t=out:st=${f(duration - fade)}:d=${f(fade)}`);
     if (compVf !== 'null') vfParts.push(compVf);
     const mainVf = `[0:${probe.videoIndex}]${vfParts.join(',')}[mv]`;
-    const af = `aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS${fade ? `,afade=t=out:st=${f(duration - fade)}:d=${f(fade)}` : ''}` + (s.signalChange ? ',' + audioSignalFilter(s) : '');
+    const af = `aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS${videoGain(s)}${fade ? `,afade=t=out:st=${f(duration - fade)}:d=${f(fade)}` : ''}` + (s.signalChange ? ',' + audioSignalFilter(s) : '');
     const mainAf = probe.audio ? `[0:${probe.audioIndex}]${af}[ma]` : `anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`;
 
     mainArgs.push('-filter_complex', `${mainVf};${mainAf}`, '-map', '[mv]', '-map', '[ma]', ...this.codec(s), '-t', f(duration), '-movflags', '+faststart', mainPart);
@@ -487,7 +503,7 @@ class Engine {
       for (const track of music) {
         args.push('-stream_loop', '-1', '-t', f(musicDuration), '-i', track.path);
         const label = 'm' + inputIdx;
-        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(musicDuration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}${introDelay ? `,adelay=${introDelay}|${introDelay}` : ''}[${label}]`);
+        audioGraph.push(`[${inputIdx}:a]${musicFilter(s, musicDuration, track.volume, introDelay)}[${label}]`);
         audioMixInputs.push(`[${label}]`);
         inputIdx++;
       }
@@ -496,7 +512,7 @@ class Engine {
         args.push('-stream_loop', '-1', '-t', f(tailSeconds), '-i', track.path);
         const label = 't' + inputIdx;
         const tailDelay = Math.round((introDuration + duration) * 1000);
-        audioGraph.push(`[${inputIdx}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${tailDelay}|${tailDelay}[${label}]`);
+        audioGraph.push(`[${inputIdx}:a]${musicFilter(s, tailSeconds, track.volume, tailDelay)}[${label}]`);
         audioMixInputs.push(`[${label}]`);
         inputIdx++;
       }
@@ -532,15 +548,15 @@ class Engine {
     const fade=cycleFile?Math.min(s.fade,Math.max(0,duration-.1)):0;
     const outputFps = s.outputFps || 30;
     graph.push(`[0:${probe.videoIndex}]${videoFilter},fps=${outputFps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS${fade?`,fade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[mv]`);
-    const af=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
+    const af=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS${videoGain(s)}`;
     graph.push(probe.audio?`[0:${probe.audioIndex}]${af}${fade?`,afade=t=out:st=${f(duration-fade)}:d=${f(fade)}`:''}[ma]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[ma]`);
     const videoParts=['[mv]'],audioParts=['[ma]'];
     if(introFile){graph.push(`[${introInput}:v]setpts=PTS-STARTPTS,fps=${outputFps},format=yuv420p,setsar=1[iv]`,`[${introInput}:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(introDuration)},asetpts=PTS-STARTPTS[ia]`);videoParts.unshift('[iv]');audioParts.unshift('[ia]');}
     if(cycleFile){graph.push(`[1:v]trim=duration=${f(s.tailSeconds)},setpts=PTS-STARTPTS,fps=${outputFps},setsar=1[tv]`,`[1:a]aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS[ta]`);videoParts.push('[tv]');audioParts.push('[ta]');}
     if(videoParts.length>1)graph.push(`${videoParts.join('')}concat=n=${videoParts.length}:v=1:a=0[joinedv]`,`${audioParts.join('')}concat=n=${audioParts.length}:v=0:a=1[base]`);else graph.push('[mv]null[joinedv]','[ma]anull[base]');audio.push('[base]');
     const introDelay=Math.round(introDuration*1000),musicDuration=total-introDuration;
-    for(const track of music){args.push('-stream_loop','-1','-t',f(musicDuration),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(musicDuration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}${introDelay?`,adelay=${introDelay}|${introDelay}`:''}[${label}]`);audio.push('['+label+']');input++;}
-    if(cycleFile)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input,delay=Math.round((introDuration+duration)*1000);graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(s.tailSeconds)},asetpts=PTS-STARTPTS,volume=${f(track.volume)},adelay=${delay}|${delay}[${label}]`);audio.push('['+label+']');input++;}
+    for(const track of music){args.push('-stream_loop','-1','-t',f(musicDuration),'-i',track.path);const label='m'+input;graph.push(`[${input}:a]${musicFilter(s,musicDuration,track.volume,introDelay)}[${label}]`);audio.push('['+label+']');input++;}
+    if(cycleFile)for(const track of tailMusic){args.push('-stream_loop','-1','-t',f(s.tailSeconds),'-i',track.path);const label='t'+input,delay=Math.round((introDuration+duration)*1000);graph.push(`[${input}:a]${musicFilter(s,s.tailSeconds,track.volume,delay)}[${label}]`);audio.push('['+label+']');input++;}
     graph.push(audio.length>1?`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0[mixeda]`:'[base]anull[mixeda]');
     const [width, height] = formats[format];
     graph.push('[joinedv]' + compositionFilter(s, width, height) + '[outv]');
@@ -556,10 +572,10 @@ class Engine {
       graph.push(`[0:${probe.videoIndex}]${filter.video},scale=${w}:${h},format=yuv420p,setsar=1[basev]`,`[${tex}:v]scale=${w}:${h},format=yuv420p,setsar=1[paper]`,`[basev][paper]blend=all_mode=softlight:all_opacity=${f(s.textureOpacity/100)}:shortest=1[outv]`);
     }else graph.push(`[0:${probe.videoIndex}]${filter.video}[outv]`);
     const baseAf=`aresample=44100,aformat=channel_layouts=stereo,apad,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS`;
-    graph.push(probe.audio?`[0:${probe.audioIndex}]${filter.coreAudio||filter.audio},${baseAf}[basea]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[basea]`);
+    graph.push(probe.audio?`[0:${probe.audioIndex}]${filter.coreAudio||filter.audio},${baseAf}${videoGain(s)}[basea]`:`anullsrc=r=44100:cl=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS[basea]`);
     for(const track of music){
       args.push('-stream_loop','-1','-t',f(duration),'-i',track.path);const label='m'+input;
-      graph.push(`[${input}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=duration=${f(duration)},asetpts=PTS-STARTPTS,volume=${f(track.volume)}[${label}]`);
+      graph.push(`[${input}:a]${musicFilter(s,duration,track.volume)}[${label}]`);
       audio.push('['+label+']');input++;
     }
     graph.push(`${audio.join('')}amix=inputs=${audio.length}:duration=first:dropout_transition=2:normalize=0,${audioSignalFilter(s)}[outa]`);
@@ -567,4 +583,4 @@ class Engine {
     await run(args,'Вариант '+target+' · '+inputName,duration);
   }
 }
-module.exports={Engine,config,editConfig,scale,blurZones,uniqueFilter,processingSettings,formats,defaults,videoExts,imageExts,audioExts};
+module.exports={Engine,config,videoGain,musicFilter,editConfig,scale,blurZones,uniqueFilter,processingSettings,formats,defaults,videoExts,imageExts,audioExts};

@@ -113,3 +113,34 @@ test('HandBrake-based compression profiles encode on the CPU and keep tails stre
   }
  }finally{await fs.rm(outRoot,{recursive:true,force:true});}
 });
+test('video volume and music normalisation settings are validated and built into the filters',()=>{
+ const {videoGain,musicFilter}=require('../src/server/creo-engine.cjs');
+ assert.equal(config().videoVolume,100);assert.equal(config().musicNormalize,false);
+ assert.equal(config({videoVolume:150.4}).videoVolume,150);
+ for(const v of [-1,201,'loud'])assert.throws(()=>config({videoVolume:v}));
+ assert.equal(videoGain(config()),'');assert.equal(videoGain(config({videoVolume:0})),',volume=0');assert.equal(videoGain(config({videoVolume:150})),',volume=1.5');
+ assert.doesNotMatch(musicFilter(config(),5,.08),/loudnorm/);
+ const normalized=musicFilter(config({musicNormalize:true}),5,.08,1200);
+ assert.match(normalized,/loudnorm=I=-14:TP=-1:LRA=11,aresample=44100.*volume=0\.08,adelay=1200\|1200$/);
+});
+test('Actual FFmpeg: video sound volume changes only the clip, normalised music stays audible',{timeout:180000},async()=>{
+ await createFixtures();const engine=new Engine(root),outRoot=path.join(root,'test-results','creo-volume-'+crypto.randomUUID());await fs.mkdir(outRoot,{recursive:true});
+ const entries=[['source.mp4'],['tail-red.mp4'],['music-0.wav']].map(([name],i)=>({id:String(i),name,path:path.join(fixtures,name)}));const resolve=id=>entries.find(e=>e.id===id);
+ const decode=args=>new Promise((ok,fail)=>{const p=spawn(engine.ffmpeg,['-hide_banner','-nostdin','-loglevel','error',...args],{windowsHide:true});const b=[];let err='';p.stdout.on('data',x=>b.push(x));p.stderr.on('data',x=>err+=x);p.on('error',fail);p.on('close',c=>c?fail(Error(err)):ok(Buffer.concat(b)));});
+ const tone=async(file,hz,t=.3,d=.5)=>{const pcm=await decode(['-ss',String(t),'-i',file,'-t',String(d),'-vn','-ac','1','-ar','8000','-f','f32le','pipe:1']);let a=0,b=0,n=pcm.length/4;for(let i=0;i<n;i++){const v=pcm.readFloatLE(i*4);a+=v*Math.cos(2*Math.PI*hz*i/8000);b+=v*Math.sin(2*Math.PI*hz*i/8000);}return Math.hypot(a,b)/n;};
+ const base={formats:['1:1'],preset:'ultrafast',crf:30,threads:1,signalChange:false,verifyResults:false,tailmix:false,tailSeconds:1,fade:.2};
+ const render=async(name,settings,extra={})=>{const out=await engine.process({settings:{...base,...settings},inputs:['0'],tails:[],music:[],tailMusic:[],edits:{'0':{start:0,end:1.5}},...extra},resolve,path.join(outRoot,name));return path.join(outRoot,name,out[0].name);};
+ const normal=await render('normal',{}),loud=await render('loud',{videoVolume:200}),muted=await render('muted',{videoVolume:0});
+ const n=await tone(normal,220),l=await tone(loud,220),m=await tone(muted,220);
+ assert.ok(l>n*1.6,'200% must be about twice as loud: '+l+' vs '+n);assert.ok(m<n/50,'0% must mute the clip: '+m);
+ // Unique mode applies the same clip volume.
+ const unique=await render('unique',{mode:'unique',copies:1,videoVolume:0,speed:0,pitch:0});assert.ok(await tone(unique,220)<n/50,'unique mode must mute the clip too');
+ // Normalised music: quiet clip, music still mixed in, tails path (mixFast) too.
+ const music=[{id:'2',volume:50}];
+ const mixed=await render('normalized',{musicNormalize:true,videoVolume:0},{music});
+ assert.ok(await tone(mixed,440)>await tone(mixed,220)*10,'normalised music must be audible over the muted clip');
+ const withTails=await render('normalized-tails',{musicNormalize:true,videoVolume:50,tailmix:true},{music,tails:['1']});
+ const probe=await engine.probe(withTails);assert.ok(probe.audio);assert.ok(Math.abs(probe.duration-2.5)<.25,'duration '+probe.duration);
+ assert.ok(await tone(withTails,440,1.8,.5)>0.01,'music keeps playing over the tails');
+ await fs.rm(outRoot,{recursive:true,force:true});
+});

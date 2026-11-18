@@ -2649,3 +2649,29 @@
 html.is-mac body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
 }
+
+/* Video sound volume: slider with an exact % field, styled like the tail duration control. */
+.cm-video-volume-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+#cm-video-volume-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+#creo-view .cm-video-volume-inputs .cm-volume input {
+  width: 58px;
+  padding: 4px 6px;
+  margin: 0;
+  min-height: 28px;
+}
+
+#cm-music-normalize-row[hidden] {
+  display: none !important;
+}

@@ -6,7 +6,7 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',compression:'custom',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,intro:false,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
+ const initial={...P.defaults,mode:'clean',compression:'custom',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,intro:false,musicMix:true,musicNormalize:false,videoVolume:100,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
@@ -191,7 +191,7 @@
   $('cm-quality').innerHTML=select('compression','Профиль сжатия',Object.entries(P.compression).map(([v,p])=>[v,p.label]))+(profile.args?`<p class="hint">${esc(profile.detail)}. По пресету ${esc(profile.source)}. Кодирует процессор, поэтому медленнее GPU. CRF, битрейт и GPU-кодировщик в этом профиле не используются.</p>`:number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v])))+number('threads','Потоков процессора (0 = авто)',0,32);
   for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=s.mode==='unique'||!!profile.args;
   $('cm-formats').innerHTML=Object.entries(formatLabels).map(([key,label])=>{const [w,h]=P.formats[key]||[];return `<label class="cm-format"><input type="checkbox" data-format="${key}" ${s.formats.includes(key)?'checked':''}><span class="cm-ratio" data-ratio="${key}" aria-hidden="true"></span><strong>${key}</strong><small>${label}</small><em class="cm-format-dim">${w}×${h}</em></label>`;}).join('');
-  $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;if($('cm-intro'))$('cm-intro').checked=!!s.intro;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
+  $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;if($('cm-intro'))$('cm-intro').checked=!!s.intro;$('cm-music-mix').checked=s.musicMix!==false;$('cm-music-normalize').checked=!!s.musicNormalize;syncVideoVolume();$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
   $('cm-unique-fields').innerHTML=[['uniqueNoise','Шум',0,15,1],['hue','Оттенок ±',0,10,.1],['saturation','Насыщенность',.95,1.1,.01],['contrast','Контраст',.95,1.1,.01],['brightness','Яркость',-.1,.1,.01],['speed','Скорость ± %',0,5,1],['jpeg','Качество JPEG',80,100,1],['zoom','Зум до %',0,5,.1],['rotate','Поворот ± °',0,5,.1],['blur','Размытие / резкость',0,5,.1],['pitch','Тон аудио ± %',0,30,1]].map(args=>number(...args)).join('');
   $('cm-copy-value').textContent=s.copies;syncCopyPills();$('cm-flip').checked=s.flip;$('cm-metadata').checked=s.metadata;$('cm-acceleration').value=s.acceleration||'auto';$('cm-name-tag').value=s.nameTag||'';
   $('cm-country').value=s.country;$('cm-metadata-title').value=s.metadataTitle;$('cm-meta-status').textContent='';metadataFields();
@@ -204,6 +204,7 @@
   for(const id of ['cm-tail-seconds','cm-fade'])$(id).disabled=off;$('cm-tail-fields').classList.toggle('is-off',off);
   if($('cm-tail-duration-control'))$('cm-tail-duration-control').hidden=off;
   syncTailPills();
+  $('cm-music-normalize-row').hidden=!musicOn;
   const sub=$('cm-music-mix-sub');if(sub)sub.textContent=off?'Только аудио поверх ролика, без видеохвостов':'Фоновая музыка поверх ролика и видеохвостов';
   const n=k=>workspace[k].length,seconds=s.tailSeconds;
   const length=seconds%60===0?seconds/60+' мин':seconds+' с';
@@ -750,8 +751,20 @@
   if(key){if(key==='outputFps')e.target.setCustomValidity(Number(e.target.value)>0&&Number(e.target.value)<12?'Укажите 0 или от 12 до 60 кадров/с.':'');if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:e.target.tagName==='SELECT'?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();if(key==='compression')settingsHTML();else if(workspace.settings.mode==='unique')schedulePreview();}
   if(e.target.dataset.format){const next=[...$('cm-formats').querySelectorAll('input:checked')].map(c=>c.dataset.format);if(!next.length){e.target.checked=true;status('Нужен хотя бы один формат.',true);return;}status('');checkpoint('форматы');workspace.settings.formats=next;save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();}
  });
- for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-intro','intro'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
-  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['tailmix','intro','tailSeconds','fade'].includes(key)){updateTailFields();syncTailPills();}if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
+ for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-intro','intro'],['cm-music-mix','musicMix'],['cm-music-normalize','musicNormalize'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
+  on(id,'change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:(e.target.tagName==='SELECT'||e.target.type==='text')?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();updateTrimUI();if(['tailmix','intro','musicMix','tailSeconds','fade'].includes(key)){updateTailFields();syncTailPills();}if(['scale','noise','flip'].includes(key)){updateCaptions();updateCropGuide();schedulePreview();}});
+ /* Volume of the clip's own sound (0–200 %, 100 = as recorded). Music volume stays per track in the Library. */
+ function syncVideoVolume(){const v=Math.round(Number(workspace.settings.videoVolume??100));$('cm-video-volume-slider').value=v;$('cm-video-volume').value=v;$('cm-video-volume-val').textContent=v===0?'Без звука':v+' %';
+  document.querySelectorAll('[data-quick-video-volume]').forEach(b=>{const hit=Number(b.dataset.quickVideoVolume)===v;b.classList.toggle('active',hit);b.setAttribute('aria-pressed',String(hit));});
+  for(const input of document.querySelectorAll('#cm-mix-panel [data-mix-video] input'))if(Number(input.value)!==v)input.value=v;
+  if(mix&&$('cm-player'))$('cm-player').volume=Math.min(1,v/100);}
+ function setVideoVolume(value,commit){const v=Math.max(0,Math.min(200,Math.round(Number(value))));if(!Number.isFinite(v))return;
+  if(workspace.settings.videoVolume!==v){checkpoint('громкость видео','setting:videoVolume');workspace.settings.videoVolume=v;}
+  syncVideoVolume();if(commit){save();presetState();}}
+ on('cm-video-volume-slider','input',e=>setVideoVolume(e.target.value,false));
+ on('cm-video-volume-slider','change',e=>setVideoVolume(e.target.value,true));
+ on('cm-video-volume','change',e=>{if(!e.target.checkValidity()){e.target.reportValidity();return;}setVideoVolume(e.target.value,true);});
+ on('cm-video-volume-control','click',e=>{const b=e.target.closest('[data-quick-video-volume]');if(b)setVideoVolume(b.dataset.quickVideoVolume,true);});
  on('cm-scale-box','click',e=>{
   const b=e.target.closest('[data-scale]');if(!b)return;
   const s=b.dataset.scale;if(!s||workspace.settings.scale===s)return;
@@ -960,15 +973,16 @@
   mix={source:src.id,start,end,tracks:list.map(t=>{const el=new Audio(mediaURL(t.id));el.loop=true;el.preload='auto';const node=mixCtx.createMediaElementSource(el),gain=mixCtx.createGain();gain.gain.value=mixGain(t.volume);node.connect(gain).connect(mixCtx.destination);return {...t,el,node,gain,name:refs.get(t.id)?.name||'Трек'};})};
   playerState={url:mediaURL(src.id),name:src.name,image:false,source:null,showingSource:false,mix:true};
   $('cm-player').classList.remove('cm-audio');$('cm-player-name').textContent=src.name+' · с музыкой';$('cm-player-compare').hidden=true;
-  $('cm-player-meta').textContent='Как в экспорте: музыка начинается с начала фрагмента'+(start?' ('+start.toFixed(2).replace('.',',')+' с)':'')+' и повторяется по кругу, звук ролика сохраняется. Громкость можно подстроить на слух, она сохранится в треке.';
+  $('cm-player-meta').textContent='Как в экспорте: музыка начинается с начала фрагмента'+(start?' ('+start.toFixed(2).replace('.',',')+' с)':'')+' и повторяется по кругу, звук ролика сохраняется. Громкость можно подстроить на слух, она сохранится в треке.'+(workspace.settings.musicNormalize?' Нормализация музыки применяется при экспорте, здесь треки звучат как в исходнике.':'')+(Number(workspace.settings.videoVolume??100)>100?' Звук видео выше 100 % в предпрослушивании звучит как 100 %, в экспорте будет громче.':'');
   renderMixPanel();
-  showMedia(playerState.url,false,1,start);
+  showMedia(playerState.url,false,Math.min(1,(Number(workspace.settings.videoVolume??100))/100),start);
   if(!$('cm-player-dialog').open)$('cm-player-dialog').showModal();
  }
  function renderMixPanel(){
   $('cm-mix-panel')?.remove();if(!mix)return;
   const panel=document.createElement('div');panel.id='cm-mix-panel';panel.className='cm-mix-panel';
-  panel.innerHTML=mix.tracks.map((t,i)=>`<div class="cm-mix-row" data-mix-index="${i}"><span class="cm-mix-name">${icon('music')}<span>${esc(t.name)}</span></span><input type="range" min="0" max="100" step="1" value="${Math.min(100,Number(t.volume)||0)}" aria-label="Громкость ${esc(t.name)}"><input type="number" min="0" max="200" step="1" value="${Number(t.volume)||0}" aria-label="Громкость ${esc(t.name)}, %"><span class="hint">%</span></div>`).join('');
+  const vv=Math.round(Number(workspace.settings.videoVolume??100));
+  panel.innerHTML=`<div class="cm-mix-row" data-mix-video><span class="cm-mix-name">${icon('film')}<span>Звук видео</span></span><input type="range" min="0" max="200" step="1" value="${vv}" aria-label="Громкость звука видео"><input type="number" min="0" max="200" step="1" value="${vv}" aria-label="Громкость звука видео, %"><span class="hint">%</span></div>`+mix.tracks.map((t,i)=>`<div class="cm-mix-row" data-mix-index="${i}"><span class="cm-mix-name">${icon('music')}<span>${esc(t.name)}</span></span><input type="range" min="0" max="100" step="1" value="${Math.min(100,Number(t.volume)||0)}" aria-label="Громкость ${esc(t.name)}"><input type="number" min="0" max="200" step="1" value="${Number(t.volume)||0}" aria-label="Громкость ${esc(t.name)}, %"><span class="hint">%</span></div>`).join('');
   $('cm-player-meta').before(panel);
  }
  function setMixVolume(i,value,persistValue){
@@ -978,8 +992,8 @@
   const lib=document.querySelector(`#cm-${t.kind}-list [data-track-id="${t.id}"] input[type=number]`);if(lib)lib.value=v;
   const track=(workspace[t.kind]||[]).find(x=>x.id===t.id);if(track&&track.volume!==v){checkpoint('громкость','volume:'+t.id);track.volume=v;save();presetState();}
  }
- $('cm-player-dialog').addEventListener('input',e=>{const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,false);});
- $('cm-player-dialog').addEventListener('change',e=>{const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,true);});
+ $('cm-player-dialog').addEventListener('input',e=>{if(e.target.closest('[data-mix-video]')){setVideoVolume(e.target.value,false);return;}const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,false);});
+ $('cm-player-dialog').addEventListener('change',e=>{if(e.target.closest('[data-mix-video]')){setVideoVolume(e.target.value,true);return;}const row=e.target.closest('[data-mix-index]');if(row)setMixVolume(Number(row.dataset.mixIndex),e.target.value,true);});
  {
   const player=$('cm-player');
   const syncMix=(force=false)=>{
