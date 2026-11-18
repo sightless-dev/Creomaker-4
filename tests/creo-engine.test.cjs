@@ -95,3 +95,21 @@ test('Actual FFmpeg: intro plays first with its own sound, music and tails start
  const off=await engine.process({...request,settings:{...settings,intro:false,tailmix:false}},resolve,path.join(outRoot,'off'));assert.ok(Math.abs(off[0].duration-1)<.2,'intro off leaves the video unchanged');
  await fs.rm(outRoot,{recursive:true,force:true});
 });
+test('HandBrake-based compression profiles encode on the CPU and keep tails stream-copied',{timeout:240000},async()=>{
+ assert.equal(config().compression,'custom');assert.throws(()=>config({compression:'bad'}),/профиль сжатия/);
+ await createFixtures();const engine=new Engine(root),outRoot=path.join(root,'test-results','creo-compression-'+crypto.randomUUID());
+ engine.hardwarePromise=Promise.resolve({available:['h264_nvenc'],preferred:'h264_nvenc'});
+ const entries=['source.mp4','tail-red.mp4'].map((name,i)=>({id:String(i),name,path:path.join(fixtures,name)})),resolve=id=>entries.find(e=>e.id===id);
+ const run=engine.run.bind(engine),encoders=new Set();
+ engine.run=async(tool,args,options)=>{const i=args.indexOf('-c:v');if(tool==='ffmpeg'&&i>=0)encoders.add(args[i+1]);return run(tool,args,options);};
+ try{
+  for(const [compression,codec,tag] of [['hq','h264','avc1'],['hevc','hevc','hvc1']]){
+   encoders.clear();
+   const outputs=await engine.process({settings:{compression,formats:['1:1'],tailSeconds:1,fade:.2,threads:1,signalChange:false,verifyResults:false},inputs:['0'],tails:['1'],edits:{'0':{start:0,end:1}}},resolve,path.join(outRoot,compression));
+   assert.equal(outputs.length,1);assert.ok(!encoders.has('h264_nvenc'),compression+' must not use the GPU encoder');
+   const info=JSON.parse(await run('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=codec_name,codec_tag_string','-of','json',path.join(outRoot,compression,outputs[0].name)]));
+   assert.equal(info.streams[0].codec_name,codec);assert.equal(info.streams[0].codec_tag_string,tag);
+   assert.ok(Math.abs(outputs[0].duration-2)<.25,JSON.stringify(outputs[0]));
+  }
+ }finally{await fs.rm(outRoot,{recursive:true,force:true});}
+});
