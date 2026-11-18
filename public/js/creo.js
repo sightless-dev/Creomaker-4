@@ -6,7 +6,7 @@
  const workspaceStore = window.CreoWorkspaceStore || window.VaultStorage;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const icon=name=>window.UIIcons?.icon(name)||'';
- const initial={...P.defaults,mode:'clean',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,intro:false,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
+ const initial={...P.defaults,mode:'clean',compression:'custom',acceleration:'auto',country:'',metadataTitle:'',metadataTopic:'',metadataLanguage:'',metadataTags:{},nameTag:'',formats:['9:16','1:1'],scale:'crop',previewFormat:'',crf:28,preset:'ultrafast',threads:0,noise:false,bitrateEnabled:false,bitrate:12000,tailmix:true,intro:false,musicMix:true,tailSeconds:60,fade:1.5,copies:1,uniqueNoise:5,hue:2,saturation:1.02,contrast:1.03,brightness:0,speed:2,flip:true,metadata:true,jpeg:95,zoom:2,rotate:1.5,blur:1,pitch:15,_speedVersion:2};
  const formatLabels={'9:16':'Вертикаль','1:1':'Квадрат','16:9':'Широкий','4:5':'Лента','4:3':'Классика'};
  const scaleLabels={crop:'обрезка краёв',letterbox:'поля',stretch:'растяжение'};
  const statusLabels={queued:'В очереди',running:'В работе',completed:'Готово',failed:'Ошибка',cancelled:'Остановлена',interrupted:'Прервана'};
@@ -124,7 +124,7 @@
   uniqueNoise:'grain',hue:'palette',saturation:'drop',contrast:'contrast',brightness:'sun',speed:'gauge',
   jpeg:'scene',zoom:'zoom',rotate:'rotate',blur:'focus',pitch:'music',
   gamma:'curve',vignette:'vignette',colorShift:'channels',pixelation:'grid',textureOpacity:'texture',tone:'moon',
-  outputFps:'film',signalLevel:'volume',signalPitch:'waveform',signalCrop:'crop',crf:'target',preset:'clock',threads:'layers'
+  outputFps:'film',signalLevel:'volume',signalPitch:'waveform',signalCrop:'crop',crf:'target',preset:'clock',threads:'layers',compression:'chart'
  };
  const profileVectors={
   light:'<svg class="cm-profile-vec" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="1" y="1" width="34" height="34" rx="7" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.16"/><path d="M8 24c4-1.5 6.5-10 11.5-10 4 0 5.5 3.5 8.5-2" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.5" stroke-linecap="round"/><circle cx="13" cy="14" r="2.2" stroke="currentColor" stroke-opacity="0.55" stroke-width="1.2"/></svg>',
@@ -187,7 +187,9 @@
   $('cm-pro-fields').innerHTML=P.fields.filter(([key])=>key!=='outputFps'&&!key.startsWith('signal')).map(args=>number(...args)).join('')+select('tone','Тонирование',Object.entries(P.tones));profileStatus();
   $('cm-verification-fields').innerHTML=P.fields.filter(([key])=>key==='outputFps'||key.startsWith('signal')).map(args=>number(...args)).join('');
   $('cm-signal-change').checked=s.signalChange;$('cm-verify-results').checked=s.verifyResults;
-  $('cm-quality').innerHTML=number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v]))+number('threads','Потоков процессора (0 = авто)',0,32);
+  const profile=P.compression[s.compression]||P.compression.custom;
+  $('cm-quality').innerHTML=select('compression','Профиль сжатия',Object.entries(P.compression).map(([v,p])=>[v,p.label]))+(profile.args?`<p class="hint">${esc(profile.detail)}. По пресету ${esc(profile.source)}. Кодирует процессор, поэтому медленнее GPU. CRF, битрейт и GPU-кодировщик в этом профиле не используются.</p>`:number('crf','Качество CRF / QP · меньше = лучше',0,51)+select('preset','Скорость CPU-кодирования',['ultrafast','superfast','veryfast','faster','fast','medium','slow'].map(v=>[v,v])))+number('threads','Потоков процессора (0 = авто)',0,32);
+  for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=s.mode==='unique'||!!profile.args;
   $('cm-formats').innerHTML=Object.entries(formatLabels).map(([key,label])=>{const [w,h]=P.formats[key]||[];return `<label class="cm-format"><input type="checkbox" data-format="${key}" ${s.formats.includes(key)?'checked':''}><span class="cm-ratio" data-ratio="${key}" aria-hidden="true"></span><strong>${key}</strong><small>${label}</small><em class="cm-format-dim">${w}×${h}</em></label>`;}).join('');
   $('cm-preview-format').value=s.previewFormat||'';if($('cm-scale'))$('cm-scale').value=s.scale;syncScaleUI();$('cm-noise').checked=s.noise;$('cm-bitrate-enabled').checked=s.bitrateEnabled;$('cm-bitrate').value=s.bitrate;$('cm-tailmix').checked=s.tailmix;if($('cm-intro'))$('cm-intro').checked=!!s.intro;$('cm-music-mix').checked=s.musicMix!==false;$('cm-tail-seconds').value=s.tailSeconds;$('cm-fade').value=s.fade;
   $('cm-unique-fields').innerHTML=[['uniqueNoise','Шум',0,15,1],['hue','Оттенок ±',0,10,.1],['saturation','Насыщенность',.95,1.1,.01],['contrast','Контраст',.95,1.1,.01],['brightness','Яркость',-.1,.1,.01],['speed','Скорость ± %',0,5,1],['jpeg','Качество JPEG',80,100,1],['zoom','Зум до %',0,5,.1],['rotate','Поворот ± °',0,5,.1],['blur','Размытие / резкость',0,5,.1],['pitch','Тон аудио ± %',0,30,1]].map(args=>number(...args)).join('');
@@ -219,7 +221,7 @@
   if($('cm-scale-box'))$('cm-scale-box').hidden=unique;
   $('cm-clean-extra').hidden=unique;$('cm-style-presets').hidden=!unique;profileStatus();syncCopyPills();syncScaleUI();syncTailPills();
   const ind=$('cm-mode-indicator');if(ind)ind.textContent=unique?'Стили и копии':'Форматы и слои';
-  for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=unique;
+  for(const id of ['cm-bitrate-row','cm-bitrate-field'])$(id).hidden=unique||!!P.compression[workspace.settings.compression]?.args;
   syncPresetSectionVisibility();
   $('creo-view').dataset.cmMode=workspace.settings.mode;renderFiles();updateStage();updateNameExample();updateEstimate();
  }
@@ -745,7 +747,7 @@
  on('cm-files','change',e=>{if(e.target.type!=='checkbox')return;const id=e.target.closest('[data-media-id]').dataset.mediaId;checkpoint('состав пакета','batch:'+id);workspace.selected=e.target.checked?[...new Set([...workspace.selected,id])]:workspace.selected.filter(v=>v!==id);save();renderFiles();});
  on('creo-view','change',e=>{
   const key=e.target.dataset.cmSetting;
-  if(key){if(key==='outputFps')e.target.setCustomValidity(Number(e.target.value)>0&&Number(e.target.value)<12?'Укажите 0 или от 12 до 60 кадров/с.':'');if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:e.target.tagName==='SELECT'?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();if(workspace.settings.mode==='unique')schedulePreview();}
+  if(key){if(key==='outputFps')e.target.setCustomValidity(Number(e.target.value)>0&&Number(e.target.value)<12?'Укажите 0 или от 12 до 60 кадров/с.':'');if(!e.target.checkValidity()){e.target.reportValidity();return;}checkpoint('параметр','setting:'+key);workspace.settings[key]=e.target.type==='checkbox'?e.target.checked:e.target.tagName==='SELECT'?e.target.value:Number(e.target.value);profileStatus();save();updateEstimate();if(key==='compression')settingsHTML();else if(workspace.settings.mode==='unique')schedulePreview();}
   if(e.target.dataset.format){const next=[...$('cm-formats').querySelectorAll('input:checked')].map(c=>c.dataset.format);if(!next.length){e.target.checked=true;status('Нужен хотя бы один формат.',true);return;}status('');checkpoint('форматы');workspace.settings.formats=next;save();updateEstimate();updateCaptions();updateCropGuide();schedulePreview();}
  });
  for(const [id,key]of [['cm-scale','scale'],['cm-noise','noise'],['cm-bitrate-enabled','bitrateEnabled'],['cm-bitrate','bitrate'],['cm-tailmix','tailmix'],['cm-intro','intro'],['cm-music-mix','musicMix'],['cm-tail-seconds','tailSeconds'],['cm-fade','fade'],['cm-flip','flip'],['cm-metadata','metadata'],['cm-acceleration','acceleration'],['cm-country','country'],['cm-metadata-title','metadataTitle']])
@@ -881,6 +883,7 @@
   s.threads=0;
   s.noise=false;
   s.bitrateEnabled=false;
+  s.compression='custom';
   s._speedVersion=2;
   configurePlatform();
   settingsHTML();

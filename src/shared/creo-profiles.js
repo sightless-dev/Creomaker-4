@@ -11,6 +11,19 @@
   {id:'heavy',label:'Тяжёлая уникализация',icon:'Ⅲ',description:'Холодный цвет, разделение RGB, заметная фактура и 24 кадра/с.',settings:{...base,uniqueNoise:8,hue:6,saturation:1.07,contrast:1.08,zoom:4,rotate:2,speed:3,blur:.8,pitch:4,gamma:.9,vignette:45,colorShift:2,outputFps:24,textureOpacity:25,tone:'cool'}},
   {id:'hardcore',label:'ABSOLUTE HARDCORE',icon:'Ⅳ',description:'Экспериментальная стилизация: монохром, крупное зерно, пикселизация, 18 кадров/с. Мелкий текст и голос заметно меняются.',settings:{...base,uniqueNoise:12,hue:8,saturation:1.1,contrast:1.1,zoom:5,rotate:4,speed:5,blur:1.5,pitch:8,gamma:.8,vignette:65,colorShift:5,pixelation:4,outputFps:18,textureOpacity:35,tone:'mono'}}
  ];
+
+ /* ---------- Compression profiles (values from HandBrake's built-in presets) ----------
+    Source: github.com/HandBrake/HandBrake, preset/preset_builtin.json, the 720p30 rows, because CreoMaker
+    renders at most 720 px on the short side. Only the encoder settings are reused, no HandBrake code.
+    'custom' keeps the CRF/preset/bitrate/GPU fields of the inspector. The others always encode on the CPU,
+    the same way the HandBrake presets do, so quality does not depend on the user's graphics card. */
+ const x265Params='strong-intra-smoothing=0:rect=0:aq-mode=1:rd=4:psy-rd=0.75:psy-rdoq=4.0:rdoq-level=1:rskip=2';
+ const compression={
+  custom:{label:'Свой',encoder:null},
+  hq:{label:'HQ · x264',detail:'Почти без потерь: x264 CRF 19, slow',encoder:'libx264',source:'HandBrake «HQ 720p30 Surround»',args:['-c:v','libx264','-crf','19','-preset','slow','-profile:v','high','-level:v','3.1']},
+  superhq:{label:'Super HQ · x264',detail:'Визуально без потерь: x264 CRF 17, veryslow, файл крупнее',encoder:'libx264',source:'HandBrake «Super HQ 720p30 Surround»',args:['-c:v','libx264','-crf','17','-preset','veryslow','-profile:v','high','-level:v','3.1','-x264-params','ref=5:bframes=5']},
+  hevc:{label:'H.265 · x265',detail:'Файл примерно на треть меньше при том же качестве: x265 CRF 21, slow',encoder:'libx265',source:'HandBrake «H.265 MKV 720p30», 8 бит для совместимости',args:['-c:v','libx265','-crf','21','-preset','slow','-x265-params',x265Params+':log-level=error','-tag:v','hvc1']}
+ };
  const tones={neutral:'Без тонирования',warm:'Тёплый янтарь',cool:'Холодная сталь',mono:'Монохром'};
  function match(s){return presets.find(p=>Object.entries(p.settings).every(([k,v])=>s[k]===v));}
 
@@ -69,8 +82,8 @@
 
  /* ---------- Named user presets ---------- */
  // Content-specific metadata texts and the preview-only format are deliberately not part of a processing preset.
- const settingKeys=['mode','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','intro','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
- const enums={mode:['clean','unique'],acceleration:['auto','cpu','amd','nvidia','intel','apple'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
+ const settingKeys=['mode','compression','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','intro','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
+ const enums={mode:['clean','unique'],compression:Object.keys(compression),acceleration:['auto','cpu','amd','nvidia','intel','apple'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
  const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','intro','musicMix','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
  const idRe=/^[a-zA-Z0-9_-]{1,100}$/;
  function presetSettings(s){const out={};for(const k of settingKeys)if(s&&Object.hasOwn(s,k))out[k]=k==='formats'?[...s[k]]:s[k];return out;}
@@ -113,6 +126,6 @@
  /* ---------- Bounded undo history of serialisable snapshots ---------- */
  function createHistory(limit=50){const stack=[];return {push(label,state){stack.push({label,state:JSON.stringify(state)});if(stack.length>limit)stack.shift();},pop(){const e=stack.pop();return e?{label:e.label,state:JSON.parse(e.state)}:null;},peek(){return stack.at(-1)?.label||'';},clear(){stack.length=0;},get size(){return stack.length;}};}
 
- return {defaults,fields,presets,tones,match,formats,safeBase,safeTag,outputName,isImage,planBatch,trimEnd,copyEdit,settingKeys,presetSettings,normalizePreset,normalizePresets,createPreset,renamePreset,updatePreset,deletePreset,applyPreset,matchUserPreset,createHistory};
+ return {defaults,fields,presets,tones,compression,match,formats,safeBase,safeTag,outputName,isImage,planBatch,trimEnd,copyEdit,settingKeys,presetSettings,normalizePreset,normalizePresets,createPreset,renamePreset,updatePreset,deletePreset,applyPreset,matchUserPreset,createHistory};
 });
 

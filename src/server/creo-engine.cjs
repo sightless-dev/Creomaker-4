@@ -12,11 +12,12 @@ const presets = ['ultrafast','superfast','veryfast','faster','fast','medium','sl
 const M=require('../shared/media-metadata.js');
 const P=require('../shared/creo-profiles.js');
 const Verification = require('./creo-verification.cjs');
-const defaults = { ...P.defaults, mode:'clean', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, intro:false, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
+const defaults = { ...P.defaults, mode:'clean', compression:'custom', acceleration:'auto', country:'', metadataTitle:'', metadataTopic:'', metadataLanguage:'', metadataTags:{}, nameTag:'', formats:['9:16','1:1'], scale:'crop', previewFormat:'', crf:28, preset:'ultrafast', threads:0, noise:false, bitrateEnabled:false, bitrate:12000, tailmix:true, intro:false, musicMix:true, tailSeconds:60, fade:1.5, copies:1, uniqueNoise:5, hue:2, saturation:1.02, contrast:1.03, brightness:0, speed:2, flip:true, metadata:true, jpeg:95, zoom:2, rotate:1.5, blur:1, pitch:15 };
 function num(v,min,max,fallback) { const n=Number(v ?? fallback); if(!Number.isFinite(n)||n<min||n>max) throw Error(`Значение должно быть от ${min} до ${max}.`); return n; }
 function config(raw={}) {
   const s={...defaults,...raw}; delete s.encoder;s.metadataTags=M.normalize(s.metadataTags);for(const [k,max]of [['metadataTopic',1000],['metadataLanguage',80]])if(typeof s[k]!=='string'||s[k].length>max)throw Error('Некорректный бриф метаданных.');
   if(!['auto','cpu','amd','nvidia','intel','apple'].includes(s.acceleration))throw Error('Неверный режим ускорения.');
+  if(!Object.hasOwn(P.compression,s.compression))throw Error('Неверный профиль сжатия.');
   if(s.country!==''&&!require('../shared/countries.js').codes.includes(s.country))throw Error('Неверная страна метаданных.');
   if(typeof s.nameTag!=='string'||s.nameTag.length>64)throw Error('Метка имени — до 32 символов.');s.nameTag=P.safeTag(s.nameTag);
   if(typeof s.metadataTitle!=='string'||s.metadataTitle.length>150||/[\x00-\x1f]/.test(s.metadataTitle))throw Error('Название метаданных — до 150 символов.'); if(!['clean','unique'].includes(s.mode))throw Error('Неизвестный режим.');
@@ -172,6 +173,8 @@ class Engine {
     return this.hardwarePromise;
   }
   codec(s){
+    const profile=P.compression[s.compression];
+    if(profile?.args)return [...profile.args,'-pix_fmt','yuv420p','-c:a','aac','-b:a','192k'];
     if(s.encoder&&s.encoder!=='libx264'){
       let q;
       if(s.bitrateEnabled){
@@ -242,15 +245,16 @@ class Engine {
     if(s.mode==='clean'&&s.tailmix&&!tails.length)throw Error('Добавьте хвосты или отключите Tailmix.');
     const intros=s.mode==='clean'&&s.intro?(request.intros||[]).map(resolveMedia):[];
     if(s.mode==='clean'&&s.intro&&!intros.length)throw Error('Начальная вставка включена, но не выбрана. Выберите вставку или выключите её.');
-    const hardware=s.acceleration==='cpu'?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv',apple:'h264_videotoolbox'})[s.acceleration]||'libx264';
-    if(s.encoder!=='libx264'&&!hardware.available.includes(s.encoder))throw Error('Выбранный GPU-кодировщик недоступен. Выберите «Авто» или CPU.');
+    const profileEncoder=P.compression[s.compression].encoder,cpuOnly=s.acceleration==='cpu'||Boolean(profileEncoder);
+    const hardware=cpuOnly?{available:[],preferred:'libx264'}:await this.hardware();s.encoder=profileEncoder||(s.acceleration==='cpu'?'libx264':s.acceleration==='auto'?hardware.preferred:({amd:'h264_amf',nvidia:'h264_nvenc',intel:'h264_qsv',apple:'h264_videotoolbox'})[s.acceleration]||'libx264');
+    if(!s.encoder.startsWith('lib')&&!hardware.available.includes(s.encoder))throw Error('Выбранный GPU-кодировщик недоступен. Выберите «Авто» или CPU.');
     await fs.mkdir(outDir,{recursive:true});
     const work=await fs.mkdtemp(path.join(path.dirname(outDir),'.creomaker-work-'));
     const outputs=[],total=inputs.length*(s.mode==='clean'?s.formats.length:s.copies);let done=0;
     const update=(label,fraction=0)=>onUpdate({label,progress:(done+fraction)/total,done,total,outputs:[...outputs]});
     const run=async(args,label,duration,from=0,weight=1)=>{update(label,from);const options={signal,threads:s.threads,duration,progress:v=>update(label,from+v*weight)};
       const codecIndex=args.indexOf('-c:v'),encoder=codecIndex<0?null:args[codecIndex+1];
-      const decode=encoder&&encoder!=='libx264'&&encoder!=='copy'&&!args.includes('lavfi')&&!args.includes('concat');
+      const decode=encoder&&!encoder.startsWith('lib')&&encoder!=='copy'&&!args.includes('lavfi')&&!args.includes('concat');
       if(decode){
         const hwaccel=process.platform==='darwin'?'videotoolbox':process.platform==='win32'?'d3d11va':null;
         if(hwaccel){
@@ -259,7 +263,7 @@ class Engine {
         }
       }
       await this.run('ffmpeg',args,options);};
-    const encoders=s.acceleration==='auto'?[...hardware.available,'libx264']:[s.encoder];
+    const encoders=s.acceleration==='auto'&&!profileEncoder?[...hardware.available,'libx264']:[s.encoder];
     let encoderIndex=0;
     const encode=async(settings,render)=>{
       for(;;){
@@ -271,8 +275,8 @@ class Engine {
         }
       }
     };
-    const encName=s.encoder==='h264_videotoolbox'?'Apple VideoToolbox (GPU)':s.encoder==='h264_nvenc'?'NVIDIA NVENC (GPU)':s.encoder==='h264_amf'?'AMD AMF (GPU)':s.encoder==='h264_qsv'?'Intel QSV (GPU)':'CPU (x264)';
-    update('Кодирование: '+encName+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map(),introCache=new Map();
+    const encName=s.encoder==='h264_videotoolbox'?'Apple VideoToolbox (GPU)':s.encoder==='h264_nvenc'?'NVIDIA NVENC (GPU)':s.encoder==='h264_amf'?'AMD AMF (GPU)':s.encoder==='h264_qsv'?'Intel QSV (GPU)':s.encoder==='libx265'?'CPU (x265)':'CPU (x264)';
+    update('Кодирование: '+encName+(profileEncoder?' · профиль '+P.compression[s.compression].label.split(' · ')[0]:'')+' · потоков: '+(s.threads||'все ядра'));const cycleCache=new Map(),introCache=new Map();
     const baselines = new Map();
     try{for(const [inputIndex,input]of inputs.entries()){
       if(signal?.aborted)throw Error('Обработка остановлена.');const probe=await this.probe(input.path,signal);if(!probe.width)throw Error('Нужен файл видео или изображения.');
