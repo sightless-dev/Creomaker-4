@@ -82,9 +82,9 @@
 
  /* ---------- Named user presets ---------- */
  // Content-specific metadata texts and the preview-only format are deliberately not part of a processing preset.
- const settingKeys=['mode','compression','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','intro','musicMix','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
+ const settingKeys=['mode','compression','acceleration','country','metadata','formats','scale','crf','preset','threads','noise','bitrateEnabled','bitrate','tailmix','intro','musicMix','musicNormalize','videoVolume','tailSeconds','fade','copies','uniqueNoise','hue','saturation','contrast','brightness','speed','flip','jpeg','zoom','rotate','blur','pitch','nameTag',...Object.keys(defaults)];
  const enums={mode:['clean','unique'],compression:Object.keys(compression),acceleration:['auto','cpu','amd','nvidia','intel','apple'],scale:['crop','letterbox','stretch'],preset:['ultrafast','superfast','veryfast','faster','fast','medium','slow'],tone:Object.keys(tones)};
- const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','intro','musicMix','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
+ const bools=new Set(['metadata','noise','bitrateEnabled','tailmix','intro','musicMix','musicNormalize','flip','verifyResults','signalChange']),texts={country:2,nameTag:32};
  const idRe=/^[a-zA-Z0-9_-]{1,100}$/;
  function presetSettings(s){const out={};for(const k of settingKeys)if(s&&Object.hasOwn(s,k))out[k]=k==='formats'?[...s[k]]:s[k];return out;}
  function cleanName(name){const n=String(name??'').replace(/[\x00-\x1f]/g,'').replace(/\s+/g,' ').trim();if(!n)throw Error('Введите название пресета.');if(n.length>60)throw Error('Название пресета — до 60 символов.');return n;}

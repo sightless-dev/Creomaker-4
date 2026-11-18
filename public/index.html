@@ -181,6 +181,27 @@
       <span class="cm-setting-label"><span data-icon="music"></span><span><strong>Наложить фоновое аудио</strong><small class="cm-row-sub" id="cm-music-mix-sub">Только аудио поверх ролика, без видеохвостов</small></span></span>
       <input id="cm-music-mix" type="checkbox" checked>
      </label>
+     <label class="cm-setting-row cm-setting-toggle" id="cm-music-normalize-row">
+      <span class="cm-setting-label"><span data-icon="volume"></span><span><strong>Нормализовать громкость музыки</strong><small class="cm-row-sub">Все треки звучат на одном уровне, громкость трека применяется поверх</small></span></span>
+      <input id="cm-music-normalize" type="checkbox">
+     </label>
+     <div class="cm-tail-duration-control cm-video-volume-control" id="cm-video-volume-control">
+      <div class="cm-tail-duration-header">
+       <label class="hint" for="cm-video-volume-slider">Громкость звука видео</label>
+       <strong id="cm-video-volume-val">100 %</strong>
+      </div>
+      <div class="cm-video-volume-inputs">
+       <input id="cm-video-volume-slider" type="range" min="0" max="200" step="1" value="100" aria-label="Громкость звука видео">
+       <label class="cm-volume"><input id="cm-video-volume" type="number" min="0" max="200" step="1" value="100" aria-label="Громкость звука видео, %">%</label>
+      </div>
+      <div class="cm-copy-pills" role="group" aria-label="Быстрый выбор громкости видео">
+       <button type="button" class="cm-copy-pill" data-quick-video-volume="0" aria-pressed="false">0%</button>
+       <button type="button" class="cm-copy-pill" data-quick-video-volume="50" aria-pressed="false">50%</button>
+       <button type="button" class="cm-copy-pill active" data-quick-video-volume="100" aria-pressed="true">100%</button>
+       <button type="button" class="cm-copy-pill" data-quick-video-volume="150" aria-pressed="false">150%</button>
+       <button type="button" class="cm-copy-pill" data-quick-video-volume="200" aria-pressed="false">200%</button>
+      </div>
+     </div>
     </div>
     <div class="cm-scale-box" id="cm-scale-box">
      <div class="cm-scale-header">
