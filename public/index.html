@@ -57,6 +57,7 @@
    <div id="cm-files" class="cm-files" role="list" aria-label="Исходники"></div>
    <div id="cm-source-actions" class="cm-source-actions" hidden>
     <button type="button" id="cm-restore-list" class="button small quiet" disabled><span data-icon="restore"></span>Вернуть из библиотеки</button>
+    <button type="button" id="cm-delete-copies" class="button small quiet" hidden><span data-icon="trash"></span>Удалить копии</button>
     <button type="button" id="cm-empty-list" class="icon-button" aria-label="Убрать файлы из списка" title="Убрать файлы из списка" disabled><span data-icon="trash"></span></button>
    </div>
   </aside>
@@ -335,6 +336,7 @@
    <div class="cm-output-info">
     <span class="cm-output-label"><span data-icon="folder"></span>Папка вывода:</span>
     <span class="cm-output-path-text" id="cm-output-dir-text" title="Текущая папка для готовых роликов"></span>
+    <label class="cm-beside-toggle" hidden title="Сохранять результат в подпапку CreoMaker рядом с исходником"><input type="checkbox" id="cm-beside-source">Рядом с исходником</label>
    </div>
    <div class="button-row cm-output-actions">
     <button type="button" id="cm-change-dir-btn" class="button small" title="Выбрать другую папку для сохранения готовых роликов"><span data-icon="folder"></span>Выбрать папку</button>
@@ -392,7 +394,7 @@
   </div>
  </dialog>
  <div id="cm-toasts" class="cm-toast-container" aria-live="polite" aria-atomic="true"></div>
- <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-intros" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
+ <input id="cm-pick-inputs" type="file" accept=".mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff" multiple hidden><input id="cm-pick-folder" type="file" webkitdirectory multiple hidden><input id="cm-pick-relink" type="file" hidden><input id="cm-pick-tails" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-intros" type="file" accept=".mp4,.mov,.avi,.mkv,.webm" multiple hidden><input id="cm-pick-music" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden><input id="cm-pick-tailMusic" type="file" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac" multiple hidden>
 </section></main>
 </div>
 <footer class="statusbar cm-footer" id="statusbar">

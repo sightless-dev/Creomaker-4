@@ -2675,3 +2675,31 @@ html.is-mac body {
 #cm-music-normalize-row[hidden] {
   display: none !important;
 }
+
+/* Linked files (desktop): a file that was moved or deleted, and the «рядом с исходником» switch. */
+.cm-file.is-missing .cm-file-select {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.cm-badge-missing {
+  cursor: pointer;
+  color: var(--danger, #d14343);
+  border-color: currentColor;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.cm-beside-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cm-beside-toggle[hidden] {
+  display: none;
+}
