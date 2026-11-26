@@ -286,20 +286,40 @@
  /* ---------- Sources ---------- */
  function renderFiles(){const clean=workspace.settings.mode==='clean',all=visibleInputs();
   $('cm-files').innerHTML=all.map(m=>{const image=isImage(m),skip=clean&&image,checked=workspace.selected.includes(m.id),active=current?.id===m.id;
-   return `<div class="cm-file${active?' active':''}${skip&&checked?' is-skipped':''}" role="listitem" data-media-id="${m.id}"><input type="checkbox" aria-label="В пакет: ${esc(m.name)}" ${checked?'checked':''}><button type="button" class="cm-file-select" data-select-file aria-current="${active}"><strong>${esc(m.name)}</strong></button>${hasEdit(m.id)&&!image?`<span class="cm-file-flag" title="Есть обрезка или зоны размытия" aria-label="Есть монтаж">${icon('crop')}</span>`:''}${skip?'<span class="cm-badge" title="В режиме Clean3 изображения пропускаются">только уник.</span>':''}<button type="button" class="icon-button cm-file-remove" data-remove-file title="Удалить файл" aria-label="Удалить ${esc(m.name)}">${icon('close')}</button></div>`;}).join('');
+   return `<div class="cm-file${active?' active':''}${skip&&checked?' is-skipped':''}${m.missing?' is-missing':''}" role="listitem" data-media-id="${m.id}"${m.linked?` title="${esc(m.location||'')}"`:''}><input type="checkbox" aria-label="В пакет: ${esc(m.name)}" ${checked?'checked':''}><button type="button" class="cm-file-select" data-select-file aria-current="${active}"><strong>${esc(m.name)}</strong></button>${hasEdit(m.id)&&!image?`<span class="cm-file-flag" title="Есть обрезка или зоны размытия" aria-label="Есть монтаж">${icon('crop')}</span>`:''}${skip?'<span class="cm-badge" title="В режиме Clean3 изображения пропускаются">только уник.</span>':''}${m.missing?`<button type="button" class="cm-badge cm-badge-missing" data-relink-file title="${esc(missingNote(m))}">нет файла</button>`:''}<button type="button" class="icon-button cm-file-remove" data-remove-file title="Удалить файл" aria-label="Удалить ${esc(m.name)}">${icon('close')}</button></div>`;}).join('');
   const hidden=media.filter(m=>m.kind==='inputs'&&(workspace.hiddenInputs||[]).includes(m.id)).length;
   const toggleBtn=$('cm-toggle-all-files');
   if(toggleBtn){toggleBtn.hidden=!all.length;const allChecked=all.length>0&&all.every(m=>workspace.selected.includes(m.id));toggleBtn.textContent=allChecked?'Снять все':'Выбрать все';}
   $('cm-source-actions').hidden=!all.length&&!hidden;
   $('cm-empty-list').disabled=!all.length;$('cm-restore-list').disabled=!hidden;
+  const copies=hiddenCopies(),dropCopies=$('cm-delete-copies');if(dropCopies){dropCopies.hidden=!copies.length;dropCopies.lastChild.textContent='Удалить копии · '+copies.length;dropCopies.title='Удалить копии убранных файлов из папки CreoMaker ('+bytes(copies.reduce((a,m)=>a+(m.size||0),0))+'). Исходные файлы не трогаются.';}
   $('cm-restore-list').lastChild.textContent='Вернуть из библиотеки'+(hidden?' · '+hidden:'');
   $('cm-drop').classList.toggle('is-empty',!all.length);
   updateEstimate();}
+ // Desktop: the real path of a dropped/picked file. Empty in the browser or with an older desktop shell.
+ const localPath=file=>{if(!linkFiles||!window.creoDesktop?.getPathForFile)return '';try{return window.creoDesktop.getPathForFile(file)||'';}catch{return '';}};
+ const missingNote=m=>m.missing?'Файл не найден: '+(m.location||m.name)+'. Нажмите, чтобы указать его заново.':'';
+ function replaceMedia(m){const i=media.findIndex(x=>x.id===m.id);if(i>=0)media[i]=m;else media.push(m);refs.set(m.id,m);if(current?.id===m.id)current=m;}
+ let relinkId=null;
+ function relink(id){if(!refs.get(id)?.linked)return;relinkId=id;const input=$('cm-pick-relink');input.accept=refs.get(id).kind==='inputs'?'.mp4,.mov,.avi,.mkv,.webm,.jpg,.jpeg,.png,.webp,.bmp,.tiff':idKinds.has(refs.get(id).kind)?'.mp4,.mov,.avi,.mkv,.webm':'.mp3,.wav,.aac,.m4a,.ogg,.flac';input.click();}
+ async function relinkPicked(file){const id=relinkId;relinkId=null;if(!id||!file)return;const local=localPath(file);if(!local)throw Error('Не удалось получить путь к файлу.');
+  const m=await api('relink',{method:'POST',data:{id,path:local}});replaceMedia(m);renderFiles();renderLibrary();status('Файл найден: '+m.location);if(current?.id===id)await selectFile(id);}
+ const hiddenCopies=()=>media.filter(m=>m.kind==='inputs'&&!m.builtin&&!m.linked&&(workspace.hiddenInputs||[]).includes(m.id));
+ async function deleteHiddenCopies(){const list=hiddenCopies();if(!list.length)return;if(busy||importTask)throw Error('Дождитесь окончания обработки.');
+  const size=list.reduce((a,m)=>a+(m.size||0),0);
+  if(!await askConfirm('Удалить копии убранных файлов?',plural(list.length,'копия','копии','копий')+' · '+bytes(size)+'. Это копии внутри CreoMaker, ваши исходные файлы не трогаются. Вернуть их из библиотеки будет нельзя.','Удалить',true))return;
+  const r=await api('forget-media',{method:'POST',data:{ids:list.map(m=>m.id)}});const gone=new Set(list.map(m=>m.id));
+  media=media.filter(m=>!gone.has(m.id));for(const id of gone)refs.delete(id);workspace.hiddenInputs=(workspace.hiddenInputs||[]).filter(id=>!gone.has(id));await persist();renderFiles();
+  status('Удалено '+plural(r.removed,'копия','копии','копий')+', освобождено '+bytes(r.freed)+'.');}
  async function upload(files,kind){if(importTask)throw Error('Дождитесь добавления предыдущих файлов.');uploadController=new AbortController();importTask=uploadFiles(files,kind,uploadController.signal).finally(()=>{importTask=null;uploadController=null;updateEstimate();});updateEstimate();return importTask;}
  async function uploadFiles(files,kind,signal){const exts=kind==='inputs'?/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp|bmp|tiff)$/i:idKinds.has(kind)?/\.(mp4|mov|avi|mkv|webm)$/i:/\.(mp3|wav|aac|m4a|ogg|flac)$/i;
   const selected=[...files].filter(f=>exts.test(f.name));if(!selected.length)throw Error('Нет подходящих медиафайлов.');let added=0,last=null;const failed=[];
-  for(const file of selected){status(`Копирование на этот компьютер: ${added+failed.length+1}/${selected.length} · ${file.name}`);
-   try{const m=await api('upload?kind='+kind+'&name='+encodeURIComponent(file.name),{method:'POST',body:file,signal});media.push(m);refs.set(m.id,m);added++;last=m;if(kind==='inputs')workspace.selected.push(m.id);else workspace[kind].push(idKinds.has(kind)?m.id:{id:m.id,volume:8});await persist();}
+  for(const file of selected){const local=localPath(file);status(`${local?'Подключение без копирования':'Копирование на этот компьютер'}: ${added+failed.length+1}/${selected.length} · ${file.name}`);
+   try{const m=local?await api('link',{method:'POST',data:{kind,path:local},signal}):await api('upload?kind='+kind+'&name='+encodeURIComponent(file.name),{method:'POST',body:file,signal});
+    // Linking the same file twice returns the existing library entry.
+    if(refs.has(m.id))media[media.findIndex(x=>x.id===m.id)]=m;else media.push(m);refs.set(m.id,m);added++;last=m;
+    if(kind==='inputs'){if(!workspace.selected.includes(m.id))workspace.selected.push(m.id);workspace.hiddenInputs=(workspace.hiddenInputs||[]).filter(v=>v!==m.id);}
+    else if(!workspace[kind].some(v=>(typeof v==='string'?v:v.id)===m.id))workspace[kind].push(idKinds.has(kind)?m.id:{id:m.id,volume:8});await persist();}
    catch(e){if(signal.aborted)throw e;failed.push(file.name+': '+e.message);}}
   renderFiles();renderLibrary();
   if(failed.length)status('Добавлено '+added+' из '+selected.length+'. Не добавлены: '+failed.slice(0,3).join('; '),true);else status('');
@@ -483,18 +503,20 @@
  }
 
  /* ---------- Output Directory Settings ---------- */
- let currentOutputRoot='',defaultOutputRoot='',isCustomOutput=false;
+ let currentOutputRoot='',defaultOutputRoot='',isCustomOutput=false,linkFiles=false,outputMode='folder';
  function updateOutputDirUI(root,defRoot,isCustom){
   if(root)currentOutputRoot=root;
   if(defRoot)defaultOutputRoot=defRoot;
   if(typeof isCustom==='boolean')isCustomOutput=isCustom;
   else isCustomOutput=Boolean(currentOutputRoot&&defaultOutputRoot&&currentOutputRoot!==defaultOutputRoot);
   const text=$('cm-output-dir-text'),rootEl=$('cm-root-path'),resetBtn=$('cm-reset-dir-btn');
-  if(text){text.textContent=currentOutputRoot;text.title=currentOutputRoot;}
+  const beside=linkFiles&&outputMode==='beside',toggle=$('cm-beside-source');
+  if(toggle){toggle.closest('label').hidden=!linkFiles;toggle.checked=beside;}
+  if(text){text.textContent=beside?'рядом с исходником, в папке CreoMaker':currentOutputRoot;text.title=beside?'Результаты сохраняются в подпапку CreoMaker рядом с каждым исходником. Если туда нельзя записать (или файл скопирован внутрь программы), результат пойдёт в: '+currentOutputRoot:currentOutputRoot;}
   if(rootEl){
    const full=String(currentOutputRoot||''),parts=full.split(/[\\/]/).filter(Boolean);
-   rootEl.textContent=parts.length>3?'…'+full.slice(full.length-parts.slice(-3).join('/').length-1):full;
-   rootEl.title='Папка вывода: '+full;
+   rootEl.textContent=beside?'Рядом с исходником':parts.length>3?'…'+full.slice(full.length-parts.slice(-3).join('/').length-1):full;
+   rootEl.title=beside?'Результаты сохраняются в подпапку CreoMaker рядом с исходником. Запасная папка: '+full:'Папка вывода: '+full;
    rootEl.dataset.full=full;
   }
   if(resetBtn)resetBtn.hidden=!isCustomOutput;
@@ -516,6 +538,8 @@
    updateOutputDirUI(r.outputRoot,r.defaultOutputRoot,r.isCustom);
    closeOutputDirDialog();
    status(r.isCustom?'Папка вывода сохранена: '+r.outputRoot:'Папка вывода сброшена по умолчанию.');
+   // Picking a folder explicitly means «save there», not next to the source.
+   if(r.isCustom&&linkFiles&&outputMode==='beside')await setOutputMode(false);
   }catch(e){
    if(err){err.hidden=false;err.textContent=e.message;}
    else status(e.message,true);
@@ -557,16 +581,17 @@
    status('Не удалось открыть папку: '+e.message,true);
   }
  }
+ async function setOutputMode(beside){const r=await api('set-output-mode',{method:'POST',data:{mode:beside?'beside':'folder'}});outputMode=r.outputMode;updateOutputDirUI();status(beside?'Результаты будут сохраняться рядом с исходниками.':'Результаты будут сохраняться в папку вывода: '+currentOutputRoot);}
  window.changeOutputDir=browseOutputDir;
  window.openOutputDir=openRootFolder;
 
  function renderLibrary(){for(const kind of ['tails','intros','music','tailMusic']){const selected=workspace[kind];const files=media.filter(m=>m.kind===kind);const order=new Map(selected.map((v,i)=>[typeof v==='string'?v:v.id,i]));files.sort((a,b)=>(order.get(a.id)??10000)-(order.get(b.id)??10000));
-  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':'На устройстве'}</small></span>${idKinds.has(kind)?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}${kind==='music'?`<button type="button" class="icon-button cm-play-mix" data-play-mix aria-label="Прослушать вместе с видео: ${esc(m.name)}" title="Прослушать вместе с видео">${icon('film')}</button>`:''}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
+  $('cm-'+kind+'-list').innerHTML=files.map(m=>{const found=selected.find(v=>(typeof v==='string'?v:v.id)===m.id);return `<div class="cm-track" data-track-id="${m.id}" data-kind="${kind}"><input type="checkbox" aria-label="Использовать ${esc(m.name)}" ${found?'checked':''}><span class="cm-track-name" title="${esc(m.missing?missingNote(m):m.location||m.source||'Добавленный файл')}">${esc(m.name)}<small>${m.builtin?'Из CreoMaker':m.missing?'Файл не найден':m.linked?'На месте, без копии':'На устройстве'}</small></span>${m.missing?`<button type="button" class="cm-badge cm-badge-missing" data-relink-file>нет файла</button>`:''}${idKinds.has(kind)?`<button type="button" class="icon-button" data-order="-1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} выше"><span class="cm-up">${icon('chevron')}</span></button><button type="button" class="icon-button" data-order="1" aria-label="Переместить ${kind==='intros'?'вставку':'хвост'} ${esc(m.name)} ниже"><span class="cm-down">${icon('chevron')}</span></button>`:`<label class="cm-volume"><input type="number" min="0" max="200" value="${found?.volume??8}" aria-label="Громкость ${esc(m.name)}, %">%</label>`}${kind==='music'?`<button type="button" class="icon-button cm-play-mix" data-play-mix aria-label="Прослушать вместе с видео: ${esc(m.name)}" title="Прослушать вместе с видео">${icon('film')}</button>`:''}<button type="button" class="icon-button" data-play-track aria-label="Прослушать или посмотреть ${esc(m.name)}">${icon('play')}</button></div>`;}).join('')||'<p class="hint">Здесь пока нет файлов.</p>';
   $('cm-'+kind+'-count').textContent=selected.length+' / '+files.length;}
   syncPlayingButtons();updateTailFields();updateEstimate();checkAssetsStatus();}
 
  /* ---------- Batch plan, validation and launch ---------- */
- function runBlockers(p=plan()){if(!available)return 'FFmpeg не найден — обработка недоступна.';if(importTask)return 'Дождитесь окончания добавления файлов.';if(p.blocking)return p.warnings.find(w=>w.level==='error').text;return '';}
+ function runBlockers(p=plan()){if(!available)return 'FFmpeg не найден — обработка недоступна.';const lost=(p.included||[]).map(id=>refs.get(id)).find(m=>m?.missing);if(lost)return 'Файл «'+lost.name+'» не найден на прежнем месте. Нажмите «нет файла», чтобы указать его заново, или уберите его из списка.';if(importTask)return 'Дождитесь окончания добавления файлов.';if(p.blocking)return p.warnings.find(w=>w.level==='error').text;return '';}
  function updateEstimate(){if(!loaded&&!opening)return;const p=plan(),s=workspace.settings,n=p.included.length,queued=jobs.filter(j=>j.status==='queued').length;
   $('cm-estimate').textContent=p.total?'На выходе: '+plural(p.total,'файл','файла','файлов'):'';
   $('cm-plan-line').textContent=n?(s.mode==='clean'?plural(n,'видео','видео','видео')+' × '+plural(p.formats.length,'формат','формата','форматов'):plural(n,'файл','файла','файлов')+' × '+plural(p.copies,'копия','копии','копий'))+(p.skipped.length?' · пропуск фото: '+p.skipped.length:''):'';
@@ -591,7 +616,8 @@
   status('');runFeedback();clearTimeout(previewTimer);await previewQueue.catch(()=>{});try{await persist();}catch(e){status('Настройки не сохранены на устройстве, но задача будет запущена: '+e.message,true);}
   const ids=new Set(p.included),edits={};for(const id of ids)if(workspace.edits[id])edits[id]=structuredClone(workspace.edits[id]);
   const request={settings:structuredClone(workspace.settings),inputs:p.included,tails:[...workspace.tails],intros:[...workspace.intros],music:structuredClone(workspace.music),tailMusic:structuredClone(workspace.tailMusic),edits,presetName:matchedPreset()?.name||''};
-  const queued=busy;const j=await api('jobs',{method:'POST',data:request,query:queued?'?queue=1':''});selectedJob=j.id;jobEvent(j);if($('cm-plan-dialog').open)$('cm-plan-dialog').close();}
+  const queued=busy;const j=await api('jobs',{method:'POST',data:request,query:queued?'?queue=1':''});selectedJob=j.id;jobEvent(j);if($('cm-plan-dialog').open)$('cm-plan-dialog').close();
+  if(j.split>1)status('Исходники лежат в разных папках, поэтому задача разделена на '+j.split+': результат каждой сохранится рядом со своими исходниками.');}
 
  /* ---------- Jobs and results ---------- */
  function jobEvent(j){const i=jobs.findIndex(v=>v.id===j.id),previous=i<0?null:jobs[i];
@@ -672,7 +698,7 @@
      workspace={...blankWorkspace(),...saved,settings:s};workspace.selected=workspace.selected.filter(id=>refs.has(id));for(const kind of ['tails','intros','music','tailMusic'])workspace[kind]=(workspace[kind]||[]).filter(v=>refs.has(typeof v==='string'?v:v.id));
     const n=P.normalizePresets(saved.userPresets);workspace.userPresets=n.presets;dropped=n.dropped;if(dropped.length)workspace.rejectedPresets=[...(saved.rejectedPresets||[]),...(saved.userPresets||[]).filter(p=>!n.presets.some(x=>x.id===p?.id))].slice(-40);save();}
    else{workspace=blankWorkspace();workspace.selected=visibleInputs().map(m=>m.id);for(const kind of ['tails','music','tailMusic'])workspace[kind]=media.filter(m=>m.kind===kind).map(m=>kind==='tails'?m.id:{id:m.id,volume:8});workspace.intros=[];}
-   history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';updateOutputDirUI(catalog.outputRoot,catalog.defaultOutputRoot,catalog.isCustomOutput);
+   history.clear();loaded=true;$('cm-ffmpeg').textContent=available?'FFmpeg готов · локально':'FFmpeg не найден';linkFiles=!!catalog.linkFiles;outputMode=catalog.outputMode||'folder';updateOutputDirUI(catalog.outputRoot,catalog.defaultOutputRoot,catalog.isCustomOutput);
    settingsHTML();renderFiles();renderLibrary();updateMode();renderActive();renderJobs();$('cm-cancel').disabled=!busy;updateUndo();if(visible)events();
    status(!available?'FFmpeg не найден. Запустите CreoMaker через файл запуска.':dropped.length?'Повреждённые пресеты не загружены ('+dropped.map(d=>d.name).join(', ')+'). Остальные настройки восстановлены.':'',!available||!!dropped.length);
   })().catch(e=>{loaded=false;throw e;}).finally(()=>{opening=null;});return opening;}
@@ -724,6 +750,7 @@
  on('cm-files','click',e=>{
   const row=e.target.closest('[data-media-id]');if(!row)return;
   const id=row.dataset.mediaId;
+  if(e.target.closest('[data-relink-file]'))return relink(id);
   if(e.target.closest('[data-remove-file]')){
    checkpoint('удаление файла');
    workspace.hiddenInputs=[...new Set([...(workspace.hiddenInputs||[]),id])];
@@ -792,6 +819,7 @@
  on('cm-library','click',e=>{const all=e.target.closest('[data-library-all]');if(all){const kind=all.dataset.libraryAll;checkpoint('слои');workspace[kind]=media.filter(m=>m.kind===kind).map(m=>idKinds.has(kind)?m.id:{id:m.id,volume:workspace[kind].find(t=>t.id===m.id)?.volume??8});renderLibrary();save();return;}
   const none=e.target.closest('[data-library-none]');if(none){checkpoint('слои');workspace[none.dataset.libraryNone]=[];renderLibrary();save();return;}
   const row=e.target.closest('[data-track-id]');if(!row)return;const m=refs.get(row.dataset.trackId);if(!m)return;
+  if(e.target.closest('[data-relink-file]'))return relink(m.id);
   if(e.target.closest('[data-play-mix]')){const volInput=row.querySelector('input[type=number]');openMixPreview([{id:m.id,kind:row.dataset.kind,volume:volInput?Number(volInput.value):8}]);return;}
   if(e.target.closest('[data-play-track]')){const kind=row.dataset.kind;if(idKinds.has(kind)){stopInlineAudio();openPlayer({url:mediaURL(m.id),name:m.name,audio:false,volume:1});}else{const volInput=row.querySelector('input[type=number]'),rawVol=volInput?Number(volInput.value):(workspace[kind].find(v=>v.id===m.id)?.volume??8);toggleInlineAudio(kind,m.id,mediaURL(m.id),rawVol,m.name);}return;}
   const move=e.target.closest('[data-order]');if(move){const list=workspace[row.dataset.kind],index=list.indexOf(m.id),target=index+Number(move.dataset.order);if(index>=0&&target>=0&&target<list.length){checkpoint(row.dataset.kind==='intros'?'порядок вставок':'порядок хвостов');[list[index],list[target]]=[list[target],list[index]];renderLibrary();save();row.parentElement.querySelector(`[data-track-id="${m.id}"] [data-order="${move.dataset.order}"]`)?.focus();}}});
@@ -869,6 +897,9 @@
  on('cm-open-root-btn','click',openRootFolder);
  on('cm-root-path','click',openRootFolder);
  on('cm-reset-dir-btn','click',()=>setOutputDir(''));
+ on('cm-beside-source','change',e=>setOutputMode(e.target.checked).catch(err=>{e.target.checked=!e.target.checked;throw err;}));
+ on('cm-pick-relink','change',async e=>{const file=e.target.files[0];e.target.value='';await relinkPicked(file);});
+ on('cm-delete-copies','click',deleteHiddenCopies);
  on('cm-dir-browse-btn','click',async()=>{
   const inp=$('cm-dir-input');
   if(window.creoDesktop?.selectDirectory){

@@ -1,4 +1,5 @@
-// Same-origin localhost API. Media paths are opaque IDs; arbitrary paths are never accepted.
+// Same-origin localhost API. Media paths are opaque IDs. The only exception is the desktop build:
+// its own window may link a local file by absolute path (route `link`) so the file is read in place instead of copied.
 const fs=require('node:fs');const fsp=require('node:fs/promises');const path=require('node:path');const crypto=require('node:crypto');const {pipeline}=require('node:stream/promises');const {Transform}=require('node:stream');const {execFile,execFileSync,spawn}=require('node:child_process');
 const {Engine,config,editConfig,defaults,formats,videoExts,imageExts,audioExts}=require('./creo-engine.cjs');
 const Profiles=require('../shared/creo-profiles.js');
@@ -30,10 +31,22 @@ function generateJobFolder({mode='clean',inputs=[],tag='',preset=''}={}){
   }
   return parts.join('_').slice(0,110);
 }
-function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(root,'assets'),onUpdated}={}){
+function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(root,'assets'),onUpdated,desktop=process.env.CREOMAKER_DESKTOP==='1'}={}){
  const dir=dataDir||path.join(root,'data','creomaker'),uploads=path.join(dir,'uploads'),defaultResults=path.join(dir,'results'),previews=path.join(dir,'previews');
  const configFile=path.join(dir,'config.json'),history=path.join(dir,'jobs');
- let results=defaultResults;
+ let results=defaultResults,outputMode=desktop?'beside':'folder';
+ const mediaKinds=['inputs','tails','intros','music','tailMusic'];
+ const allowedExts=kind=>kind==='inputs'?[...videoExts,...imageExts]:['tails','intros'].includes(kind)?videoExts:['music','tailMusic'].includes(kind)?audioExts:[];
+ const samePath=(a,b)=>process.platform==='win32'||process.platform==='darwin'?a.toLowerCase()===b.toLowerCase():a===b;
+ const isMissing=m=>Boolean(m.linked&&!fs.existsSync(m.path));
+ async function checkLocalFile(raw,kind){
+  if(typeof raw!=='string'||!raw||raw.length>4096||raw.includes('\0')||!path.isAbsolute(raw))throw Error('Нужен полный путь к файлу на этом компьютере.');
+  const file=path.resolve(raw);if(!allowedExts(kind).includes(path.extname(file).toLowerCase()))throw Error('Этот тип файла не подходит для выбранной группы.');
+  const stat=await fsp.stat(file).catch(()=>null);if(!stat?.isFile())throw Error('Файл не найден: '+file);
+  return {path:file,size:stat.size};
+ }
+ async function probeFor(file,kind){const probe=await engine.probe(file);if(['inputs','tails','intros'].includes(kind)&&!probe.width||['music','tailMusic'].includes(kind)&&!probe.audio)throw Error('В файле нет нужного видео или аудио потока.');return probe;}
+ function ensureFile(m){if(isMissing(m))throw Error('Файл «'+m.name+'» не найден: '+m.path+'. Его переместили, переименовали или удалили. Укажите файл заново.');return m;}
  const engine=providedEngine||new Engine(root),media=new Map(),jobs=new Map(),tokens=new Map(),clients=new Set(),reservedJobs=new Set();let active=null,starting=false,queue=[],previewBusy=false,importCount=0,writeChain=Promise.resolve();
  const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
  const atomic=(file,value)=>{
@@ -51,10 +64,10 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
   });
   return writeChain;
  };
- const saveConfig=cfg=>atomic(configFile,cfg);
- const publicMedia=m=>({id:m.id,name:m.name,kind:m.kind,size:m.size,builtin:!!m.builtin,source:m.source,probe:m.probe});
+ const saveConfig=()=>atomic(configFile,{outputDir:path.resolve(results)===path.resolve(defaultResults)?null:results,outputMode});
+ const publicMedia=m=>({id:m.id,name:m.name,kind:m.kind,size:m.size,builtin:!!m.builtin,source:m.source,probe:m.probe,...(m.linked?{linked:true,location:m.path,missing:isMissing(m)}:{})});
  const publicJob=j=>({id:j.id,status:j.status,progress:j.progress,label:j.label,logs:j.logs,outputs:j.outputs,createdAt:j.createdAt,mode:j.mode,error:j.error,outputDir:j.outputDir||path.join(results,j.id),total:j.total,sources:j.sources,summary:j.summary,queuePosition:j.status==='queued'?queue.findIndex(q=>q.job.id===j.id)+1:undefined});
- const saveMedia=()=>atomic(path.join(dir,'library.json'),[...media.values()].filter(m=>!m.builtin).map(m=>({...m,path:path.basename(m.path)})));
+ const saveMedia=()=>atomic(path.join(dir,'library.json'),[...media.values()].filter(m=>!m.builtin).map(m=>({...m,path:m.linked?m.path:path.basename(m.path)})));
  const stateDir=j=>j.stateDir||path.join(history,j.id);
  const reservationKey=id=>id.normalize('NFC').toLowerCase();
  async function isHistoryDir(target){
@@ -91,11 +104,12 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
   try{
    const cfg=JSON.parse(await fsp.readFile(configFile,'utf8'));
    if(cfg&&typeof cfg.outputDir==='string'&&cfg.outputDir.trim())results=path.resolve(cfg.outputDir.trim());
+   if(desktop&&['beside','folder'].includes(cfg?.outputMode))outputMode=cfg.outputMode;
   }catch{}
   if(process.env.CREO_OUTPUT_DIR)results=path.resolve(process.env.CREO_OUTPUT_DIR);
   await Promise.all([uploads,results,defaultResults,previews,history].map(d=>fsp.mkdir(d,{recursive:true})));
   if(await isHistoryDir(results))results=defaultResults;
-  try{const saved=JSON.parse(await fsp.readFile(path.join(dir,'library.json'),'utf8'));for(const m of saved){if(validId(m.id)&&path.basename(m.path)===m.path&&['inputs','tails','intros','music','tailMusic'].includes(m.kind)){const full=path.join(uploads,m.path);if(fs.existsSync(full))media.set(m.id,{...m,path:full});}}}catch(e){if(e.code!=='ENOENT')throw Error('Не удалось прочитать библиотеку CreoMaker. Исходный файл сохранён.');}
+  try{const saved=JSON.parse(await fsp.readFile(path.join(dir,'library.json'),'utf8'));for(const m of saved){if(!validId(m.id)||typeof m.path!=='string'||!mediaKinds.includes(m.kind))continue;if(m.linked){if(path.isAbsolute(m.path))media.set(m.id,{...m,linked:true});continue;}if(path.basename(m.path)===m.path){const full=path.join(uploads,m.path);if(fs.existsSync(full))media.set(m.id,{...m,path:full});}}}catch(e){if(e.code!=='ENOENT')throw Error('Не удалось прочитать библиотеку CreoMaker. Исходный файл сохранён.');}
   await refreshLibrary();
   const scanDir=async (d,legacy=false)=>{
    try{
@@ -173,12 +187,12 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    }
    if(!authorize(req,url)){json(res,401,{error:'Откройте вкладку CreoMaker заново.'});return true;}
    if(route==='session'&&req.method==='DELETE'){tokens.delete(req.headers['x-creo-token']);json(res,200,{ok:true});return true;}
-   if(route==='catalog'&&req.method==='GET'){await refreshLibrary();let ver='1.1.0';try{ver=JSON.parse(await fsp.readFile(path.join(root,'package.json'),'utf8')).version||ver;}catch{}json(res,200,{media:[...media.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true})).map(publicMedia),jobs:[...jobs.values()].map(publicJob).reverse(),defaults,formats,platform:process.platform,version:ver,outputRoot:results,defaultOutputRoot:defaultResults,isCustomOutput:path.resolve(results)!==path.resolve(defaultResults),available:fs.existsSync(engine.ffmpeg)&&fs.existsSync(engine.ffprobe)});return true;}
+   if(route==='catalog'&&req.method==='GET'){await refreshLibrary();let ver='1.1.0';try{ver=JSON.parse(await fsp.readFile(path.join(root,'package.json'),'utf8')).version||ver;}catch{}json(res,200,{media:[...media.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru',{numeric:true})).map(publicMedia),jobs:[...jobs.values()].map(publicJob).reverse(),defaults,formats,platform:process.platform,version:ver,outputRoot:results,defaultOutputRoot:defaultResults,isCustomOutput:path.resolve(results)!==path.resolve(defaultResults),linkFiles:desktop,outputMode,available:fs.existsSync(engine.ffmpeg)&&fs.existsSync(engine.ffprobe)});return true;}
    if(route==='set-output-dir'&&req.method==='POST'){
     const b=await body(req);let raw=typeof b.path==='string'?b.path.trim():'';
     raw=raw.replace(/^["']+|["']+$/g,'').trim();
     if(!raw||path.resolve(raw)===path.resolve(defaultResults)){
-     results=defaultResults;await saveConfig({outputDir:null});
+     results=defaultResults;await saveConfig();
      json(res,200,{ok:true,outputRoot:results,defaultOutputRoot:defaultResults,isCustom:false});return true;
     }
     const target=path.resolve(raw);
@@ -191,7 +205,7 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
      await fsp.writeFile(testFile,'creo');
      await fsp.unlink(testFile);
     }catch(err){throw Error('Не удалось получить доступ к папке ('+err.message+'). Проверьте путь и права записи.');}
-    results=target;await saveConfig({outputDir:target});
+    results=target;await saveConfig();
     json(res,200,{ok:true,outputRoot:results,defaultOutputRoot:defaultResults,isCustom:true});return true;
    }
    if(route==='open-root-folder'&&req.method==='POST'){
@@ -239,17 +253,47 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
    if(route==='upload'&&req.method==='POST'){
     if(importCount>=2){json(res,429,{error:'Дождитесь завершения предыдущей загрузки.'});return true;}
     const kind=url.searchParams.get('kind'),name=path.basename(url.searchParams.get('name')||'').replace(/[\x00-\x1f]/g,''),ext=path.extname(name).toLowerCase();
-    const allowed=kind==='inputs'?[...videoExts,...imageExts]:['tails','intros'].includes(kind)?videoExts:['music','tailMusic'].includes(kind)?audioExts:[];if(!allowed.includes(ext))throw Error('Этот тип файла не подходит для выбранной группы.');
+    const allowed=allowedExts(kind);if(!allowed.includes(ext))throw Error('Этот тип файла не подходит для выбранной группы.');
     const id=crypto.randomUUID(),file=path.join(uploads,id+ext),temp=file+'.part';let size=0;importCount++;
     try{await pipeline(req,new Transform({transform(chunk,_,cb){size+=chunk.length;if(size>8*1024**3)return cb(Error('Один файл — максимум 8 ГБ.'));cb(null,chunk);}}),fs.createWriteStream(temp,{flags:'wx'}));await fsp.rename(temp,file);const probe=await engine.probe(file);if(['inputs','tails','intros'].includes(kind)&&!probe.width||['music','tailMusic'].includes(kind)&&!probe.audio)throw Error('В файле нет нужного видео или аудио потока.');const m={id,name,kind,size,path:file,probe};media.set(id,m);await saveMedia();json(res,201,publicMedia(m));}
     catch(e){await fsp.unlink(temp).catch(()=>{});if(!media.has(id))await fsp.unlink(file).catch(()=>{});throw e;}finally{importCount--;}
     return true;
    }
-   if(route==='probe'&&req.method==='POST'){const r=await body(req),m=resolveMedia(r.id);m.probe=await engine.probe(m.path);json(res,200,m.probe);return true;}
-   if(route==='media'&&['GET','HEAD'].includes(req.method)){await serve(req,res,resolveMedia(url.searchParams.get('id')).path);return true;}
+   if(route==='link'&&req.method==='POST'){
+    // Desktop only: the file stays where it is, the library remembers its absolute path.
+    if(!desktop)throw Error('Подключать файлы без копирования можно только в десктопной версии.');
+    const b=await body(req),kind=b.kind;if(!mediaKinds.includes(kind))throw Error('Неверная группа медиа.');
+    const file=await checkLocalFile(b.path,kind);
+    const existing=[...media.values()].find(m=>m.linked&&m.kind===kind&&samePath(m.path,file.path));
+    if(existing){existing.size=file.size;json(res,200,publicMedia(existing));return true;}
+    const probe=await probeFor(file.path,kind),m={id:crypto.randomUUID(),name:path.basename(file.path),kind,size:file.size,path:file.path,linked:true,probe};
+    media.set(m.id,m);await saveMedia();json(res,201,publicMedia(m));return true;
+   }
+   if(route==='relink'&&req.method==='POST'){
+    if(!desktop)throw Error('Указать файл заново можно только в десктопной версии.');
+    const b=await body(req),m=resolveMedia(b.id);if(!m.linked)throw Error('Этот файл хранится внутри CreoMaker, его не нужно указывать заново.');
+    const file=await checkLocalFile(b.path,m.kind),probe=await probeFor(file.path,m.kind);
+    Object.assign(m,{path:file.path,name:path.basename(file.path),size:file.size,probe});await saveMedia();json(res,200,publicMedia(m));return true;
+   }
+   if(route==='forget-media'&&req.method==='POST'){
+    if(active||starting||queue.length)throw Error('Дождитесь окончания обработки, затем удаляйте файлы.');
+    const b=await body(req);if(!Array.isArray(b.ids)||b.ids.length>1000)throw Error('Неверный список файлов.');
+    let removed=0,freed=0;
+    for(const id of b.ids){if(!validId(id)||!media.has(id))continue;const m=media.get(id);if(m.builtin)continue;
+     if(!m.linked&&path.dirname(m.path)===uploads){await fsp.unlink(m.path).catch(e=>{if(e.code!=='ENOENT')throw e;});freed+=m.size||0;}
+     media.delete(id);removed++;}
+    if(removed)await saveMedia();json(res,200,{ok:true,removed,freed});return true;
+   }
+   if(route==='set-output-mode'&&req.method==='POST'){
+    const b=await body(req);if(!['beside','folder'].includes(b.mode))throw Error('Неверный режим сохранения.');
+    if(b.mode==='beside'&&!desktop)throw Error('Сохранение рядом с исходником доступно только в десктопной версии.');
+    outputMode=b.mode;await saveConfig();json(res,200,{ok:true,outputMode});return true;
+   }
+   if(route==='probe'&&req.method==='POST'){const r=await body(req),m=ensureFile(resolveMedia(r.id));m.probe=await engine.probe(m.path);json(res,200,m.probe);return true;}
+   if(route==='media'&&['GET','HEAD'].includes(req.method)){await serve(req,res,ensureFile(resolveMedia(url.searchParams.get('id'))).path);return true;}
    if(route==='preview'&&req.method==='POST'){
     if(previewBusy||active||starting)throw Error('Обработка занята. Предпросмотр доступен после завершения текущей операции.');previewBusy=true;const ctrl=new AbortController();res.on('close',()=>{if(!res.writableEnded)ctrl.abort()});
-    try{const r=await body(req),m=resolveMedia(r.id),s=config(r.settings),id=crypto.randomUUID(),file=path.join(previews,id+'.jpg');
+    try{const r=await body(req),m=ensureFile(resolveMedia(r.id)),s=config(r.settings),id=crypto.randomUUID(),file=path.join(previews,id+'.jpg');
      if(r.timeline)await engine.timeline(m.path,s,file,ctrl.signal);else if(r.source)await engine.sourceFrame(m.path,file,Number(r.time)||0,ctrl.signal);else await engine.preview(m.path,s,r.edit,file,Number(r.time)||0,ctrl.signal);
      const old=await Promise.all((await fsp.readdir(previews)).filter(n=>/^[\da-f-]+\.jpg$/.test(n)&&n!==id+'.jpg').map(async name=>({name,time:(await fsp.stat(path.join(previews,name))).mtimeMs})));old.sort((a,b)=>b.time-a.time);for(const entry of old.slice(49))await fsp.unlink(path.join(previews,entry.name)).catch(()=>{});
      json(res,200,{id});
@@ -269,28 +313,52 @@ function createCreoAPI(root,{dataDir,engine:providedEngine,assetRoot=path.join(r
     if(request.settings.mode==='clean'&&request.settings.tailmix&&!request.tails.length)throw Error('Хвосты включены, но не выбраны. Выберите хвосты или выключите их.');
     if(request.settings.mode==='clean'&&request.settings.intro&&!request.intros.length)throw Error('Начальная вставка включена, но не выбрана. Выберите вставку или выключите её.');
     if(request.presetName!=null&&(typeof request.presetName!=='string'||request.presetName.length>60))throw Error('Неверное название пресета.');
-    const s=request.settings,resolvedInputs=request.inputs.map(i=>resolveMedia(i));
-    const baseId=generateJobFolder({createdAt:new Date(),mode:s.mode,inputs:resolvedInputs,tag:s.nameTag,preset:request.presetName});
-    if(wantsQueue&&queue.length+reservedJobs.size>=20)throw Error('В очереди уже 20 задач. Дождитесь их выполнения.');
-    let id=baseId,suffix=1;
-    while(jobs.has(id)||reservedJobs.has(reservationKey(id))||fs.existsSync(path.join(results,id))||fs.existsSync(path.join(defaultResults,id))||fs.existsSync(path.join(history,id))){
-      suffix++;
-      id=`${baseId}_${suffix}`;
+    const s=request.settings;
+    // Every file the engine will actually read must still exist (a linked file may have been moved).
+    for(const id of request.inputs)ensureFile(resolveMedia(id));
+    const used=[...(s.mode==='clean'&&s.tailmix?request.tails:[]),...(s.mode==='clean'&&s.intro?request.intros:[]),...(s.musicMix?request.music:[]),...(s.mode==='clean'&&s.tailmix&&s.musicMix?request.tailMusic||[]:[])];
+    for(const v of used)ensureFile(resolveMedia(typeof v==='string'?v:v.id));
+    // «Рядом с исходником»: one job per source folder, so each result lands next to its own source.
+    const groups=new Map();
+    for(const id of request.inputs){const m=resolveMedia(id),key=outputMode==='beside'&&m.linked?path.dirname(m.path):'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(id);}
+    const extraQueued=wantsQueue?groups.size:groups.size-1;
+    if(extraQueued&&queue.length+reservedJobs.size+extraQueued>20)throw Error('В очереди не хватит места: максимум 20 задач. Дождитесь их выполнения.');
+    const created=[];
+    for(const [sourceDir,ids] of groups){
+     const sub={...request,inputs:ids};
+     if(groups.size>1&&request.edits&&typeof request.edits==='object')sub.edits=Object.fromEntries(Object.entries(request.edits).filter(([k])=>ids.includes(k)));
+     const resolvedInputs=ids.map(i=>resolveMedia(i));
+     let root=results,note='';
+     if(sourceDir){
+      const beside=path.join(sourceDir,'CreoMaker');
+      try{await fsp.mkdir(beside,{recursive:true});const probeFile=path.join(beside,'.creo-write-test-'+crypto.randomUUID());await fsp.writeFile(probeFile,'creo');await fsp.unlink(probeFile);root=beside;}
+      catch(e){note='Не удалось сохранить рядом с исходником ('+sourceDir+': '+(e.code||e.message)+'). Результаты сохраняются в папку вывода: '+results;}
+     }
+     const baseId=generateJobFolder({createdAt:new Date(),mode:s.mode,inputs:resolvedInputs,tag:s.nameTag,preset:request.presetName});
+     let id=baseId,suffix=1;
+     while(jobs.has(id)||reservedJobs.has(reservationKey(id))||fs.existsSync(path.join(root,id))||fs.existsSync(path.join(results,id))||fs.existsSync(path.join(defaultResults,id))||fs.existsSync(path.join(history,id))){
+       suffix++;
+       id=`${baseId}_${suffix}`;
+     }
+     const job={id,status:'running',progress:0,label:'Подготовка',logs:[],outputs:[],createdAt:new Date().toISOString(),mode:s.mode,total:ids.length*(s.mode==='clean'?s.formats.length:s.copies),
+      sources:resolvedInputs.map(m=>({id:m.id,name:m.name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,intro:s.mode==='clean'&&s.intro,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
+     if(note)job.logs.push({time:new Date().toISOString(),text:note});
+     const folder=path.resolve(root,id);job.outputDir=folder;
+     const queued=wantsQueue||created.length>0;
+     if(queued){job.status='queued';job.label='В очереди';}
+     reservedJobs.add(reservationKey(id));
+     try{
+      await Promise.all([folder,stateDir(job)].map(d=>fsp.mkdir(d,{recursive:true})));
+      await atomic(path.join(stateDir(job),'request.json'),sub);
+      await persistJob(job);
+     }finally{reservedJobs.delete(reservationKey(id));}
+     jobs.set(id,job);
+     if(queued){queue.push({job,request:sub,folder});broadcast(job);}
+     else startJob(job,sub,folder);
+     created.push(job);
     }
-    const job={id,status:'running',progress:0,label:'Подготовка',logs:[],outputs:[],createdAt:new Date().toISOString(),mode:s.mode,total:request.inputs.length*(s.mode==='clean'?s.formats.length:s.copies),
-     sources:resolvedInputs.map(m=>({id:m.id,name:m.name})),summary:{mode:s.mode,formats:s.mode==='clean'?s.formats:[],copies:s.mode==='unique'?s.copies:0,scale:s.scale,tailmix:s.mode==='clean'&&s.tailmix,intro:s.mode==='clean'&&s.intro,music:Boolean(s.musicMix&&request.music?.length),nameTag:s.nameTag,preset:request.presetName||''}};
-    const folder=path.resolve(results,id);job.outputDir=folder;
-    if(wantsQueue){job.status='queued';job.label='В очереди';}
-    reservedJobs.add(reservationKey(id));
-    try{
-     await Promise.all([folder,stateDir(job)].map(d=>fsp.mkdir(d,{recursive:true})));
-     await atomic(path.join(stateDir(job),'request.json'),request);
-     await persistJob(job);
-    }finally{reservedJobs.delete(reservationKey(id));}
-    jobs.set(id,job);
-    if(wantsQueue){queue.push({job,request,folder});broadcast(job);drain();}
-    else startJob(job,request,folder);
-    json(res,202,publicJob(job));return true;}finally{if(!wantsQueue)starting=false;drain();}
+    drain();
+    json(res,202,{...publicJob(created[0]),split:created.length});return true;}finally{if(!wantsQueue)starting=false;drain();}
    }
    if(route==='validate-project'&&req.method==='POST'){const w=await body(req);w.settings=config(w.settings);if(!Array.isArray(w.selected)||w.selected.length>200||!w.edits||typeof w.edits!=='object')throw Error('Некорректный проект.');for(const id of w.selected)if(resolveMedia(id).kind!=='inputs')throw Error('Неверный исходник.');if(w.intros==null)w.intros=[];for(const key of ['tails','intros','music','tailMusic']){if(!Array.isArray(w[key])||w[key].length>100)throw Error('Неверная группа '+key);for(const v of w[key]){const ids=['tails','intros'].includes(key);if(resolveMedia(ids?v:v.id).kind!==key)throw Error('Неверная группа медиа.');if(!ids&&(!Number.isFinite(v.volume)||v.volume<0||v.volume>200))throw Error('Неверная громкость.');}}const edits={};for(const [id,e]of Object.entries(w.edits)){const m=resolveMedia(id);if(m.kind!=='inputs')throw Error('Неверный исходник монтажа.');const p=await engine.probe(m.path);edits[id]={...editConfig(e,p.duration),time:Math.max(0,Math.min(p.duration,Number(e.time)||0))};}const {presets:userPresets,dropped}=Profiles.normalizePresets(w.userPresets);for(const p of userPresets){try{config({...w.settings,...p.settings});}catch(e){throw Error('Пресет «'+p.name+'»: '+e.message);}}json(res,200,{settings:w.settings,selected:w.selected,tails:w.tails,intros:w.intros,music:w.music,tailMusic:w.tailMusic,edits,userPresets,droppedPresets:dropped});return true;}
    if(route==='job-request'&&req.method==='GET'){const j=jobs.get(url.searchParams.get('id'));if(!j)throw Error('Задача не найдена.');const request=JSON.parse(await fsp.readFile(path.join(stateDir(j),'request.json'),'utf8'));delete request.queue;json(res,200,request);return true;}

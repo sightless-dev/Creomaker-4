@@ -105,7 +105,7 @@ const freePort = () => new Promise(resolve => {
     await page.locator('#cm-frame').waitFor();
     assert.equal(await page.locator('#cm-preview-empty').isVisible(), false);
     assert.equal(await page.locator('.cm-source-tools').count(), 0);
-    assert.equal(await page.locator('#cm-source-actions button').count(), 2);
+    assert.equal(await page.locator('#cm-source-actions button:not([hidden])').count(), 2);
     await page.locator('#cm-empty-list').click();
     await page.locator('#cm-files [data-media-id]').waitFor({ state: 'detached' });
     assert.equal(await page.locator('#cm-run').isDisabled(), true);
